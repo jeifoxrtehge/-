@@ -47,6 +47,9 @@ speedup_active = False
 speedup_timer = 0
 speed_multiplier = 2
 
+levelup_image = pygame.transform.scale(pygame.image.load('pic/levelupball.png'),  (bsize//2, bsize//2))
+levelup_remain = 3
+
 cbsize = 64
 colorball_images = [None]
 for i in range(1, 10):
@@ -117,6 +120,22 @@ def draw_speedup_count():
     count_surface = font.render(count_text, True, (255, 255, 255))
     count_x = icon_x + speedup_icon.get_width() + 10
     count_y = icon_y + (speedup_icon.get_height() - count_surface.get_height()) // 2
+    screen.blit(count_surface, (count_x, count_y))
+
+def draw_levelup_count():
+    global levelup_remain
+    levelup_icon = levelup_image
+    icon_x = screen_width - 110 - levelup_icon.get_width()
+    icon_y = progress_bar['y'] + 410
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    if (icon_x <= mouse_x <= icon_x + levelup_icon.get_width() and
+        icon_y <= mouse_y <= icon_y + levelup_icon.get_height()):
+        pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, levelup_icon.get_width() + 10, levelup_icon.get_height() + 10), border_radius=10)
+    screen.blit(levelup_icon, (icon_x, icon_y))
+    count_text = f"x {levelup_remain}"
+    count_surface = font.render(count_text, True, (255, 255, 255))
+    count_x = icon_x + levelup_icon.get_width() + 10
+    count_y = icon_y + (levelup_icon.get_height() - count_surface.get_height()) // 2
     screen.blit(count_surface, (count_x, count_y))
 
 def draw_progress():
@@ -241,12 +260,14 @@ def check_ball_collisions(balls):
                     if ball1['type'] == 0 or ball2['type'] == 0:
                         score = ball1['type'] + ball2['type']
                         if score != 0:
-                            total_score += score
+                            lv = ball1.get('level', 0) + ball2.get('level', 0)
+                            total_score += score * lv
                             text_x = (x1 + x2) // 2
                             text_y = (y1 + y2) // 2
                             text_color = get_score_color(score)
-                            text_surface = font.render(f"+{score}", True, text_color)
-                            shadow_surface = font.render(f"+{score}", True, (0, 0, 0))
+                            score_fmt = f"+{score}" + ("" if lv == 1 else f"x{lv}")
+                            text_surface = font.render(score_fmt, True, text_color)
+                            shadow_surface = font.render(score_fmt, True, (0, 0, 0))
                             float_texts.append({
                                 'shadow': shadow_surface,
                                 'text': text_surface,
@@ -290,13 +311,26 @@ while running:
                 }
 
             speedup_image_rect = speedup_image.get_rect(
-                topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 250)
+                topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 270)
             )
             if speedup_image_rect.collidepoint(click_x, click_y):
                 if not speedup_active and speedup_remain > 0:
                     speedup_remain -= 1
                     speedup_active = True
                     speedup_timer = 10 * 60
+
+            levelup_image_rect = levelup_image.get_rect(
+                topleft=(screen_width - 110 - levelup_image.get_width(), progress_bar['y'] + 410)
+            )
+            if levelup_image_rect.collidepoint(click_x, click_y):
+                if levelup_remain > 0:
+                    levelup_remain -= 1
+                    whiteballs = []
+                    for ball in balls :
+                        if ball.get('level'):
+                            whiteballs.append(ball)
+                    if len(whiteballs):
+                        random.choice(whiteballs)['level'] += 1
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
             if ball_remain <= 0:
@@ -327,6 +361,7 @@ while running:
                 'rect': new_ball_rect,
                 'speed': new_ball_speed,
                 'type' : 0,
+                'level' : 1,
             })
             ghost_ball = None
 
@@ -397,6 +432,10 @@ while running:
     # 绘制所有球体
     for ball in balls:
         screen.blit(ball['image'], ball['rect'])
+        if ball.get('level'):
+            text = small_font.render(f"x{ball['level']}", True, (0, 0, 0))
+            screen.blit(text, ( (ball['rect'].x + ball['rect'].right)//2 - 16, 
+                               (ball['rect'].y+ ball['rect'].bottom) // 2- 16)  )
 
     updated_float_texts = []
     for text_obj in float_texts:
@@ -416,6 +455,7 @@ while running:
     draw_progress()
     draw_whiteball_count()
     draw_speedup_count()
+    draw_levelup_count()
     pygame.display.flip()
     clock.tick(60)
 
