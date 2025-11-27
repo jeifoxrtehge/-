@@ -29,7 +29,7 @@ except FileNotFoundError:
 
 small_font = pygame.font.Font(None, 32) 
 total_score = 0
-max_progress = 100000000
+current_level = 1
 ball_remain = 3
 progress_bar = {
     'x': 40,
@@ -41,20 +41,47 @@ progress_bar = {
     'fill_color': (0, 255, 128)
 }
 
-speedup_image = pygame.transform.scale(pygame.image.load('pic/speedupball.png'),  (bsize//2, bsize//2))
+# 关卡配置：每关的目标分值、初始白球数、彩球数量
+level_configs = [
+    # 关卡1-10：{目标分值, 初始白球数, 彩球数量, 彩球最大等级}
+    {'target_score': 10, 'init_white_balls': 1, 'color_ball_count': 1},
+    {'target_score': 100, 'init_white_balls': 2, 'color_ball_count': 2},
+    {'target_score': 1000, 'init_white_balls': 3, 'color_ball_count': 3},
+    {'target_score': 5000, 'init_white_balls': 4, 'color_ball_count': 4},
+    {'target_score': 10000, 'init_white_balls': 4, 'color_ball_count': 5},
+    {'target_score': 100000, 'init_white_balls': 4, 'color_ball_count': 6},
+    {'target_score': 1000000, 'init_white_balls': 5, 'color_ball_count': 7},
+    {'target_score': 10000000, 'init_white_balls': 5, 'color_ball_count': 8},
+    {'target_score': 100000000, 'init_white_balls': 5, 'color_ball_count': 9},
+    {'target_score': 1000000000, 'init_white_balls': 5, 'color_ball_count': 10}
+]
+
+speedup_image = None
+try:
+    speedup_image = pygame.transform.scale(pygame.image.load('pic/speedupball.png'),  (bsize//2, bsize//2))
+except FileNotFoundError:
+    # 替代图片：紫色圆形
+    speedup_image = pygame.Surface((bsize//2, bsize//2), pygame.SRCALPHA)
+    pygame.draw.circle(speedup_image, (128, 0, 255), (bsize//4, bsize//4), bsize//4)
 speedup_remain = 3
 speedup_active = False
 speedup_timer = 0
 speed_multiplier = 2
 
-levelup_image = pygame.transform.scale(pygame.image.load('pic/levelupball.png'),  (bsize//2, bsize//2))
+levelup_image = None
+try:
+    levelup_image = pygame.transform.scale(pygame.image.load('pic/levelupball.png'),  (bsize//2, bsize//2))
+except FileNotFoundError:
+    # 替代图片：金色圆形
+    levelup_image = pygame.Surface((bsize//2, bsize//2), pygame.SRCALPHA)
+    pygame.draw.circle(levelup_image, (255, 215, 0), (bsize//4, bsize//4), bsize//4)
 levelup_remain = 3
 
 cbsize = 64
 colorball_images = [None]
 for i in range(1, 10):
     cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
-    colorball_images.append( cimage )
+    colorball_images.append(cimage)
 
 gamearea = {
     'left': 70, 'top': 180,
@@ -92,7 +119,6 @@ def get_score_color(score):
         g = int(150 - 100 * (ratio - 0.8) * 5)
         b = int(100 - 100 * (ratio - 0.8) * 5)
     return (r, g, b)
-
 
 def draw_whiteball_count():
     global ball_remain
@@ -139,10 +165,14 @@ def draw_levelup_count():
     screen.blit(count_surface, (count_x, count_y))
 
 def draw_progress():
-    global total_score
+    global total_score, current_level
+    # 获取当前关卡配置
+    current_config = level_configs[current_level - 1]
+    max_progress = current_config['target_score']
     current_progress = min(total_score, max_progress)
     fill_width = (current_progress / max_progress) * progress_bar['width']
     
+    # 绘制进度条背景
     pygame.draw.rect(screen, progress_bar['bg_color'], (
         progress_bar['x'], 
         progress_bar['y'], 
@@ -150,6 +180,7 @@ def draw_progress():
         progress_bar['height']
     ))
     
+    # 绘制进度条填充
     pygame.draw.rect(screen, progress_bar['fill_color'], (
         progress_bar['x'], 
         progress_bar['y'], 
@@ -157,6 +188,7 @@ def draw_progress():
         progress_bar['height']
     ))
     
+    # 绘制进度条边框
     pygame.draw.rect(screen, progress_bar['border_color'], (
         progress_bar['x'], 
         progress_bar['y'], 
@@ -164,7 +196,7 @@ def draw_progress():
         progress_bar['height']
     ), 3)
 
-    
+    # 绘制分数文本
     score_text = f"{current_progress}/{max_progress}"
     score_surface = small_font.render(score_text, True, (255, 255, 255))
     score_rect = score_surface.get_rect(center=(
@@ -173,6 +205,7 @@ def draw_progress():
     ))
     screen.blit(score_surface, score_rect)
     
+    # 绘制百分比文本
     percent = (current_progress / max_progress) * 100
     percent_text = f"{percent:.1f}%"
     percent_surface = small_font.render(percent_text, True, (255, 255, 255))
@@ -180,6 +213,14 @@ def draw_progress():
         topright=(progress_bar['x'] + progress_bar['width'] + 80, progress_bar['y'] + 5)
     )
     screen.blit(percent_surface, percent_rect)
+    
+    # 绘制关卡文本（在进度条下方，分数文本左侧）
+    level_text = f"Level: {current_level}"
+    level_surface = small_font.render(level_text, True, (255, 215, 0))  # 金色文本
+    level_rect = level_surface.get_rect(
+        topleft=(progress_bar['x'], progress_bar['y'] + progress_bar['height'] + 20)
+    )
+    screen.blit(level_surface, level_rect)
 
 # 碰撞检测和响应函数
 def check_ball_collisions(balls):
@@ -286,14 +327,93 @@ def check_ball_collisions(balls):
                             ball['speed'][0] *= scale
                             ball['speed'][1] *= scale
 
-for i in range(1, 10):
-    img = colorball_images[i]
-    balls.append({
-        'image': img,
-        'rect': img.get_rect(),
-        'speed': [0, 0],
-        'type' : i
+def init_level(level):
+    """初始化指定关卡"""
+    global balls, total_score, ball_remain, speedup_remain, levelup_remain, float_texts
+    global ghost_ball, speedup_active, speedup_timer
+    
+    # 重置游戏状态
+    balls = []
+    total_score = 0
+    float_texts = []
+    ghost_ball = None
+    speedup_active = False
+    speedup_timer = 0
+    
+    # 获取关卡配置
+    config = level_configs[level - 1]
+    ball_remain = config['init_white_balls']
+    speedup_remain = 3 + (level - 1) // 2  # 每2关增加1个加速道具
+    levelup_remain = 3 + (level - 1) // 3  # 每3关增加1个升级道具
+    
+    # 生成彩球（随机位置、随机类型、随机初始速度）
+    color_ball_count = config['color_ball_count']
+    
+    for i in range(color_ball_count):
+        # 随机选择彩球类型（1-9）
+        ball_type = i + 1
+        img = colorball_images[ball_type]
+        
+        # 随机位置（确保在游戏区域内，且不会超出边界）
+        ball_radius = cbsize // 2
+        x = random.randint(gamearea['left'] + ball_radius, gamearea['right'] - ball_radius)
+        y = random.randint(gamearea['top'] + ball_radius, gamearea['bottom'] - ball_radius)
+        
+        # 随机初始速度（较小的速度，避免一开始就高速碰撞）
+        speed_x = random.randint(-5, 5)
+        speed_y = random.randint(-5, 5)
+        # 确保速度不为零
+        if speed_x == 0 and speed_y == 0:
+            speed_x = random.choice([-3, 3])
+        
+        balls.append({
+            'image': img,
+            'rect': img.get_rect(center=(x, y)),
+            'speed': [speed_x, speed_y],
+            'type': ball_type,
+        })
+    
+    # 绘制关卡开始提示
+    level_start_text = f"Level {level} Start!"
+    text_surface = font.render(level_start_text, True, (255, 215, 0))
+    shadow_surface = font.render(level_start_text, True, (0, 0, 0))
+    float_texts.append({
+        'shadow': shadow_surface,
+        'text': text_surface,
+        'x': screen_width // 2,
+        'y': screen_height // 2,
+        'alpha': 255,
+        'life': 120  # 显示2秒
     })
+
+def check_level_up():
+    """检查是否升级关卡"""
+    global current_level
+    if current_level > 10:
+        return
+    
+    current_config = level_configs[current_level - 1]
+    if total_score >= current_config['target_score']:
+        if current_level < 10:
+            # 进入下一关
+            current_level += 1
+            init_level(current_level)
+        else:
+            # 通关提示
+            clear_text = "恭喜！所有关卡已通关！"
+            text_surface = font.render(clear_text, True, (255, 215, 0))
+            shadow_surface = font.render(clear_text, True, (0, 0, 0))
+            float_texts.append({
+                'shadow': shadow_surface,
+                'text': text_surface,
+                'x': screen_width // 2,
+                'y': screen_height // 2,
+                'alpha': 255,
+                'life': 300  # 显示5秒
+            })
+
+# 初始化第一关
+init_level(current_level)
 
 while running:
     for event in pygame.event.get():
@@ -326,11 +446,23 @@ while running:
                 if levelup_remain > 0:
                     levelup_remain -= 1
                     whiteballs = []
-                    for ball in balls :
-                        if ball.get('level'):
+                    for ball in balls:
+                        if ball.get('level') and ball['type'] == 0:  # 只升级白球
                             whiteballs.append(ball)
-                    if len(whiteballs):
+                    if whiteballs:
                         random.choice(whiteballs)['level'] += 1
+                        # 显示升级提示
+                        upgrade_text = "Lv +1"
+                        text_surface = font.render(upgrade_text, True, (255, 215, 0))
+                        shadow_surface = font.render(upgrade_text, True, (0, 0, 0))
+                        float_texts.append({
+                            'shadow': shadow_surface,
+                            'text': text_surface,
+                            'x': click_x,
+                            'y': click_y - 30,
+                            'alpha': 255,
+                            'life': 60
+                        })
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
             if ball_remain <= 0:
@@ -360,8 +492,8 @@ while running:
                 'image': final_ball_image,
                 'rect': new_ball_rect,
                 'speed': new_ball_speed,
-                'type' : 0,
-                'level' : 1,
+                'type': 0,
+                'level': 1,
             })
             ghost_ball = None
 
@@ -369,6 +501,9 @@ while running:
         speedup_timer -= 1
         if speedup_timer <= 0:
             speedup_active = False
+
+    # 检查关卡升级
+    check_level_up()
 
     screen.fill((0, 0, 0))
     screen.blit(gameback, gameback.get_rect())
@@ -435,8 +570,9 @@ while running:
         if ball.get('level'):
             text = small_font.render(f"x{ball['level']}", True, (0, 0, 0))
             screen.blit(text, ( (ball['rect'].x + ball['rect'].right)//2 - 16, 
-                               (ball['rect'].y+ ball['rect'].bottom) // 2- 16)  )
+                               (ball['rect'].y + ball['rect'].bottom) // 2 - 16)  )
 
+    # 更新并绘制浮动文本
     updated_float_texts = []
     for text_obj in float_texts:
         text_obj['y'] -= 2
@@ -452,10 +588,19 @@ while running:
             updated_float_texts.append(text_obj)
     float_texts = updated_float_texts
 
+    # 绘制UI元素
     draw_progress()
     draw_whiteball_count()
     draw_speedup_count()
     draw_levelup_count()
+    
+    # 如果是最后一关且已通关，显示通关提示
+    if current_level == 10 and total_score >= level_configs[9]['target_score']:
+        clear_text = "Mission Complete!"
+        text_surface = font.render(clear_text, True, (255, 215, 0))
+        text_rect = text_surface.get_rect(center=(screen_width//2, screen_height//2 - 50))
+        screen.blit(text_surface, text_rect)
+
     pygame.display.flip()
     clock.tick(60)
 
