@@ -8,6 +8,10 @@ screen_width, screen_height = 1440, 810
 screen = pygame.display.set_mode((screen_width, screen_height))
 balls = []
 bsize = 256
+
+float_texts = []
+font = pygame.font.Font(None, 48)
+    
 # 加载图片时添加错误处理
 try:
     scaled_image = pygame.transform.scale(pygame.image.load('pic/whiteball.png'), (bsize, bsize))
@@ -23,6 +27,13 @@ except FileNotFoundError:
     gameback = pygame.Surface((screen_width, screen_height))
     gameback.fill((128, 128, 128))
 
+
+cbsize = 64
+colorball_images = [None]
+for i in range(1, 10):
+    cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
+    colorball_images.append( cimage )
+
 gamearea = {
     'left': 70, 'top': 180,
     'right': 1088, 'bottom': 747
@@ -33,6 +44,32 @@ min_ghost_size = 30
 max_ghost_size = 150
 running = True
 clock = pygame.time.Clock()
+
+# 根据分数获取渐变颜色（分数越高越鲜艳）
+def get_score_color(score):
+    score = max(1, min(9, score))
+    ratio = (score - 1) / 8 
+    if ratio < 0.2: 
+        r = int(100 + 100 * ratio * 5)
+        g = int(150 + 50 * ratio * 5)
+        b = 255
+    elif ratio < 0.4:
+        r = int(200 - 100 * (ratio - 0.2) * 5)
+        g = 255
+        b = int(255 - 150 * (ratio - 0.2) * 5)
+    elif ratio < 0.6: 
+        r = int(100 + 100 * (ratio - 0.4) * 5)
+        g = 255
+        b = int(100 - 100 * (ratio - 0.4) * 5)
+    elif ratio < 0.8: 
+        r = 255
+        g = int(255 - 100 * (ratio - 0.6) * 5)
+        b = int(50 + 50 * (ratio - 0.6) * 5)
+    else:  
+        r = 255
+        g = int(150 - 100 * (ratio - 0.8) * 5)
+        b = int(100 - 100 * (ratio - 0.8) * 5)
+    return (r, g, b)
 
 # 碰撞检测和响应函数
 def check_ball_collisions(balls):
@@ -108,7 +145,24 @@ def check_ball_collisions(balls):
                     ball1['speed'][1] += (impulse / m1) * ny
                     ball2['speed'][0] -= (impulse / m2) * nx
                     ball2['speed'][1] -= (impulse / m2) * ny
-                    
+
+                    if ball1['type'] == 0 or ball2['type'] == 0:
+                        score = ball1['type'] + ball2['type']
+                        if score != 0:
+                            text_x = (x1 + x2) // 2
+                            text_y = (y1 + y2) // 2
+                            text_color = get_score_color(score)
+                            text_surface = font.render(f"+{score}", True, text_color)
+                            shadow_surface = font.render(f"+{score}", True, (0, 0, 0))
+                            float_texts.append({
+                                'shadow': shadow_surface,
+                                'text': text_surface,
+                                'x': text_x,
+                                'y': text_y,
+                                'alpha': 255,
+                                'life': 60
+                            })
+
                     # 限制最大速度，防止球体速度过快
                     max_speed = 40
                     for ball in [ball1, ball2]:
@@ -117,6 +171,15 @@ def check_ball_collisions(balls):
                             scale = max_speed / speed_mag
                             ball['speed'][0] *= scale
                             ball['speed'][1] *= scale
+
+for i in range(1, 10):
+    img = colorball_images[i]
+    balls.append({
+        'image': img,
+        'rect': img.get_rect(),
+        'speed': [0, 0],
+        'type' : i
+    })
 
 while running:
     for event in pygame.event.get():
@@ -156,7 +219,8 @@ while running:
             balls.append({
                 'image': final_ball_image,
                 'rect': new_ball_rect,
-                'speed': new_ball_speed
+                'speed': new_ball_speed,
+                'type' : 0,
             })
             ghost_ball = None
     
@@ -221,7 +285,22 @@ while running:
     # 绘制所有球体
     for ball in balls:
         screen.blit(ball['image'], ball['rect'])
-    
+
+    updated_float_texts = []
+    for text_obj in float_texts:
+        text_obj['y'] -= 2
+        text_obj['alpha'] -= 4
+        text_obj['life'] -= 1
+        text_obj['text'].set_alpha(max(0, text_obj['alpha']))
+        text_obj['shadow'].set_alpha(max(0, text_obj['alpha']))
+        shadow_rect = text_obj['shadow'].get_rect(center=(text_obj['x']+2, text_obj['y']+2))
+        text_rect = text_obj['text'].get_rect(center=(text_obj['x'], text_obj['y']))
+        screen.blit(text_obj['shadow'], shadow_rect)
+        screen.blit(text_obj['text'], text_rect)
+        if text_obj['life'] > 0 and text_obj['alpha'] > 0:
+            updated_float_texts.append(text_obj)
+    float_texts = updated_float_texts
+
     pygame.display.flip()
     clock.tick(60)
 
