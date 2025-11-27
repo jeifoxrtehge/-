@@ -56,6 +56,17 @@ level_configs = [
     {'target_score': 1000000000, 'init_white_balls': 5, 'color_ball_count': 10}
 ]
 
+# 道具解锁配置
+unlock_config = {
+    'speedup': 3,    # 第3关解锁加速道具
+    'levelup': 4     # 第4关解锁升级道具
+}
+
+# 锁定图标（红色叉号）
+lock_surface = pygame.Surface((bsize//4, bsize//4), pygame.SRCALPHA)
+pygame.draw.line(lock_surface, (255, 0, 0), (10, 10), (lock_surface.get_width()-10, lock_surface.get_height()-10), 5)
+pygame.draw.line(lock_surface, (255, 0, 0), (lock_surface.get_width()-10, 10), (10, lock_surface.get_height()-10), 5)
+
 speedup_image = None
 try:
     speedup_image = pygame.transform.scale(pygame.image.load('pic/speedupball.png'),  (bsize//2, bsize//2))
@@ -77,10 +88,17 @@ except FileNotFoundError:
     pygame.draw.circle(levelup_image, (255, 215, 0), (bsize//4, bsize//4), bsize//4)
 levelup_remain = 3
 
+# 加载彩球图片时添加错误处理
 cbsize = 64
 colorball_images = [None]
 for i in range(1, 10):
-    cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
+    try:
+        cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
+    except FileNotFoundError:
+        # 替代图片：根据等级生成渐变颜色的圆形
+        cimage = pygame.Surface((cbsize, cbsize), pygame.SRCALPHA)
+        color = get_score_color(i) if 'get_score_color' in locals() else (255, 0, 0)
+        pygame.draw.circle(cimage, color, (cbsize//2, cbsize//2), cbsize//2)
     colorball_images.append(cimage)
 
 gamearea = {
@@ -133,36 +151,72 @@ def draw_whiteball_count():
     screen.blit(count_surface, (count_x, count_y))
 
 def draw_speedup_count():
-    global speedup_remain
+    global speedup_remain, current_level
     speedup_icon = speedup_image
     icon_x = screen_width - 110 - speedup_icon.get_width()
     icon_y = progress_bar['y'] + 270
     mouse_x, mouse_y = pygame.mouse.get_pos()
-    if (icon_x <= mouse_x <= icon_x + speedup_icon.get_width() and
-        icon_y <= mouse_y <= icon_y + speedup_icon.get_height()):
-        pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, speedup_icon.get_width() + 10, speedup_icon.get_height() + 10), border_radius=10)
-    screen.blit(speedup_icon, (icon_x, icon_y))
-    count_text = f"x {speedup_remain}"
-    count_surface = font.render(count_text, True, (255, 255, 255))
-    count_x = icon_x + speedup_icon.get_width() + 10
-    count_y = icon_y + (speedup_icon.get_height() - count_surface.get_height()) // 2
-    screen.blit(count_surface, (count_x, count_y))
+    
+    # 检查是否解锁
+    is_unlocked = current_level >= unlock_config['speedup']
+    
+    # 如果未解锁，绘制半透明图标和锁定标记
+    if not is_unlocked:
+        # 半透明图标
+        locked_icon = speedup_icon.copy()
+        locked_icon.set_alpha(100)
+        screen.blit(locked_icon, (icon_x, icon_y))
+        
+        # 锁定标记
+        lock_x = icon_x + (speedup_icon.get_width() - lock_surface.get_width()) // 2
+        lock_y = icon_y + (speedup_icon.get_height() - lock_surface.get_height()) // 2
+        screen.blit(lock_surface, (lock_x, lock_y))
+        
+    else:
+        # 已解锁，正常绘制
+        if (icon_x <= mouse_x <= icon_x + speedup_icon.get_width() and
+            icon_y <= mouse_y <= icon_y + speedup_icon.get_height()):
+            pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, speedup_icon.get_width() + 10, speedup_icon.get_height() + 10), border_radius=10)
+        screen.blit(speedup_icon, (icon_x, icon_y))
+        count_text = f"x {speedup_remain}"
+        count_surface = font.render(count_text, True, (255, 255, 255))
+        count_x = icon_x + speedup_icon.get_width() + 10
+        count_y = icon_y + (speedup_icon.get_height() - count_surface.get_height()) // 2
+        screen.blit(count_surface, (count_x, count_y))
 
 def draw_levelup_count():
-    global levelup_remain
+    global levelup_remain, current_level
     levelup_icon = levelup_image
     icon_x = screen_width - 110 - levelup_icon.get_width()
     icon_y = progress_bar['y'] + 410
     mouse_x, mouse_y = pygame.mouse.get_pos()
-    if (icon_x <= mouse_x <= icon_x + levelup_icon.get_width() and
-        icon_y <= mouse_y <= icon_y + levelup_icon.get_height()):
-        pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, levelup_icon.get_width() + 10, levelup_icon.get_height() + 10), border_radius=10)
-    screen.blit(levelup_icon, (icon_x, icon_y))
-    count_text = f"x {levelup_remain}"
-    count_surface = font.render(count_text, True, (255, 255, 255))
-    count_x = icon_x + levelup_icon.get_width() + 10
-    count_y = icon_y + (levelup_icon.get_height() - count_surface.get_height()) // 2
-    screen.blit(count_surface, (count_x, count_y))
+    
+    # 检查是否解锁
+    is_unlocked = current_level >= unlock_config['levelup']
+    
+    # 如果未解锁，绘制半透明图标和锁定标记
+    if not is_unlocked:
+        # 半透明图标
+        locked_icon = levelup_icon.copy()
+        locked_icon.set_alpha(100)
+        screen.blit(locked_icon, (icon_x, icon_y))
+        
+        # 锁定标记
+        lock_x = icon_x + (levelup_icon.get_width() - lock_surface.get_width()) // 2
+        lock_y = icon_y + (levelup_icon.get_height() - lock_surface.get_height()) // 2
+        screen.blit(lock_surface, (lock_x, lock_y))
+    
+    else:
+        # 已解锁，正常绘制
+        if (icon_x <= mouse_x <= icon_x + levelup_icon.get_width() and
+            icon_y <= mouse_y <= icon_y + levelup_icon.get_height()):
+            pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, levelup_icon.get_width() + 10, levelup_icon.get_height() + 10), border_radius=10)
+        screen.blit(levelup_icon, (icon_x, icon_y))
+        count_text = f"x {levelup_remain}"
+        count_surface = font.render(count_text, True, (255, 255, 255))
+        count_x = icon_x + levelup_icon.get_width() + 10
+        count_y = icon_y + (levelup_icon.get_height() - count_surface.get_height()) // 2
+        screen.blit(count_surface, (count_x, count_y))
 
 def draw_progress():
     global total_score, current_level
@@ -343,8 +397,17 @@ def init_level(level):
     # 获取关卡配置
     config = level_configs[level - 1]
     ball_remain = config['init_white_balls']
-    speedup_remain = 3 + (level - 1) // 2  # 每2关增加1个加速道具
-    levelup_remain = 3 + (level - 1) // 3  # 每3关增加1个升级道具
+    
+    # 根据关卡解锁状态设置道具数量
+    if level >= unlock_config['speedup']:
+        speedup_remain = 3 + (level - 1) // 2  # 每2关增加1个加速道具
+    else:
+        speedup_remain = 0  # 未解锁时数量为0
+    
+    if level >= unlock_config['levelup']:
+        levelup_remain = 3 + (level - 1) // 3  # 每3关增加1个升级道具
+    else:
+        levelup_remain = 0  # 未解锁时数量为0
     
     # 生成彩球（随机位置、随机类型、随机初始速度）
     color_ball_count = config['color_ball_count']
@@ -385,6 +448,32 @@ def init_level(level):
         'alpha': 255,
         'life': 120  # 显示2秒
     })
+    
+    # 检查是否解锁新道具，显示解锁提示
+    if level == unlock_config['speedup']:
+        unlock_text = "恭喜解锁 加速道具！"
+        text_surface = font.render(unlock_text, True, (128, 0, 255))
+        shadow_surface = font.render(unlock_text, True, (0, 0, 0))
+        float_texts.append({
+            'shadow': shadow_surface,
+            'text': text_surface,
+            'x': screen_width // 2,
+            'y': screen_height // 2 + 60,
+            'alpha': 255,
+            'life': 180  # 显示3秒
+        })
+    elif level == unlock_config['levelup']:
+        unlock_text = "恭喜解锁 升级道具！"
+        text_surface = font.render(unlock_text, True, (255, 215, 0))
+        shadow_surface = font.render(unlock_text, True, (0, 0, 0))
+        float_texts.append({
+            'shadow': shadow_surface,
+            'text': text_surface,
+            'x': screen_width // 2,
+            'y': screen_height // 2 + 60,
+            'alpha': 255,
+            'life': 180  # 显示3秒
+        })
 
 def check_level_up():
     """检查是否升级关卡"""
@@ -430,39 +519,43 @@ while running:
                     'scale_dir': 1
                 }
 
-            speedup_image_rect = speedup_image.get_rect(
-                topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 270)
-            )
-            if speedup_image_rect.collidepoint(click_x, click_y):
-                if not speedup_active and speedup_remain > 0:
-                    speedup_remain -= 1
-                    speedup_active = True
-                    speedup_timer = 10 * 60
+            # 加速道具点击检测（只在解锁后有效）
+            if current_level >= unlock_config['speedup']:
+                speedup_image_rect = speedup_image.get_rect(
+                    topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 270)
+                )
+                if speedup_image_rect.collidepoint(click_x, click_y):
+                    if not speedup_active and speedup_remain > 0:
+                        speedup_remain -= 1
+                        speedup_active = True
+                        speedup_timer = 10 * 60
 
-            levelup_image_rect = levelup_image.get_rect(
-                topleft=(screen_width - 110 - levelup_image.get_width(), progress_bar['y'] + 410)
-            )
-            if levelup_image_rect.collidepoint(click_x, click_y):
-                if levelup_remain > 0:
-                    levelup_remain -= 1
-                    whiteballs = []
-                    for ball in balls:
-                        if ball.get('level') and ball['type'] == 0:  # 只升级白球
-                            whiteballs.append(ball)
-                    if whiteballs:
-                        random.choice(whiteballs)['level'] += 1
-                        # 显示升级提示
-                        upgrade_text = "Lv +1"
-                        text_surface = font.render(upgrade_text, True, (255, 215, 0))
-                        shadow_surface = font.render(upgrade_text, True, (0, 0, 0))
-                        float_texts.append({
-                            'shadow': shadow_surface,
-                            'text': text_surface,
-                            'x': click_x,
-                            'y': click_y - 30,
-                            'alpha': 255,
-                            'life': 60
-                        })
+            # 升级道具点击检测（只在解锁后有效）
+            if current_level >= unlock_config['levelup']:
+                levelup_image_rect = levelup_image.get_rect(
+                    topleft=(screen_width - 110 - levelup_image.get_width(), progress_bar['y'] + 410)
+                )
+                if levelup_image_rect.collidepoint(click_x, click_y):
+                    if levelup_remain > 0:
+                        levelup_remain -= 1
+                        whiteballs = []
+                        for ball in balls:
+                            if ball.get('level') and ball['type'] == 0:  # 只升级白球
+                                whiteballs.append(ball)
+                        if whiteballs:
+                            random.choice(whiteballs)['level'] += 1
+                            # 显示升级提示
+                            upgrade_text = "Lv +1"
+                            text_surface = font.render(upgrade_text, True, (255, 215, 0))
+                            shadow_surface = font.render(upgrade_text, True, (0, 0, 0))
+                            float_texts.append({
+                                'shadow': shadow_surface,
+                                'text': text_surface,
+                                'x': click_x,
+                                'y': click_y - 30,
+                                'alpha': 255,
+                                'life': 60
+                            })
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
             if ball_remain <= 0:
