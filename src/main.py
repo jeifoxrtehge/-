@@ -27,6 +27,20 @@ except FileNotFoundError:
     gameback = pygame.Surface((screen_width, screen_height))
     gameback.fill((128, 128, 128))
 
+small_font = pygame.font.Font(None, 32) 
+total_score = 0
+max_progress = 100000000
+ball_remain = 3
+progress_bar = {
+    'x': 40,
+    'y': 40,
+    'width': 1300,
+    'height': 30,
+    'border_color': (255, 255, 255),
+    'bg_color': (50, 50, 50),
+    'fill_color': (0, 255, 128)
+}
+
 
 cbsize = 64
 colorball_images = [None]
@@ -71,9 +85,66 @@ def get_score_color(score):
         b = int(100 - 100 * (ratio - 0.8) * 5)
     return (r, g, b)
 
+
+def draw_whiteball_count():
+    global ball_remain
+    ball_image = pygame.transform.scale(scaled_image, (bsize//2, bsize//2))
+    icon_x = screen_width - 110 - ball_image.get_width()
+    icon_y = progress_bar['y'] + 130
+    screen.blit(ball_image, (icon_x, icon_y))
+    count_text = f"x {ball_remain}"
+    count_surface = font.render(count_text, True, (255, 255, 255))
+    count_x = icon_x + ball_image.get_width() + 10
+    count_y = icon_y + (ball_image.get_height() - count_surface.get_height()) // 2
+    screen.blit(count_surface, (count_x, count_y))
+
+def draw_progress():
+    global total_score
+    current_progress = min(total_score, max_progress)
+    fill_width = (current_progress / max_progress) * progress_bar['width']
+    
+    pygame.draw.rect(screen, progress_bar['bg_color'], (
+        progress_bar['x'], 
+        progress_bar['y'], 
+        progress_bar['width'], 
+        progress_bar['height']
+    ))
+    
+    pygame.draw.rect(screen, progress_bar['fill_color'], (
+        progress_bar['x'], 
+        progress_bar['y'], 
+        fill_width, 
+        progress_bar['height']
+    ))
+    
+    pygame.draw.rect(screen, progress_bar['border_color'], (
+        progress_bar['x'], 
+        progress_bar['y'], 
+        progress_bar['width'], 
+        progress_bar['height']
+    ), 3)
+
+    
+    score_text = f"{current_progress}/{max_progress}"
+    score_surface = small_font.render(score_text, True, (255, 255, 255))
+    score_rect = score_surface.get_rect(center=(
+        progress_bar['x'] + progress_bar['width']//2, 
+        progress_bar['y'] + progress_bar['height'] + 20 
+    ))
+    screen.blit(score_surface, score_rect)
+    
+    percent = (current_progress / max_progress) * 100
+    percent_text = f"{percent:.1f}%"
+    percent_surface = small_font.render(percent_text, True, (255, 255, 255))
+    percent_rect = percent_surface.get_rect(
+        topright=(progress_bar['x'] + progress_bar['width'] + 80, progress_bar['y'] + 5)
+    )
+    screen.blit(percent_surface, percent_rect)
+
 # 碰撞检测和响应函数
 def check_ball_collisions(balls):
     """检测所有球体之间的碰撞并处理"""
+    global total_score  
     for i in range(len(balls)):
         ball1 = balls[i]
         # 球体1的属性：位置、半径、速度
@@ -149,6 +220,7 @@ def check_ball_collisions(balls):
                     if ball1['type'] == 0 or ball2['type'] == 0:
                         score = ball1['type'] + ball2['type']
                         if score != 0:
+                            total_score += score
                             text_x = (x1 + x2) // 2
                             text_y = (y1 + y2) // 2
                             text_color = get_score_color(score)
@@ -196,6 +268,9 @@ while running:
                     'scale_dir': 1
                 }
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
+            if ball_remain <= 0:
+                continue
+            ball_remain -= 1
             click_x, click_y = event.pos
             final_size = ghost_ball['current_size']
             final_ball_image = pygame.transform.scale(scaled_image, (int(final_size), int(final_size)))
@@ -265,18 +340,18 @@ while running:
         # 左右边界
         if ball['rect'].left <= gamearea['left']:
             ball['rect'].left = gamearea['left']
-            ball['speed'][0] = -ball['speed'][0] * 0.8  # 添加一点阻尼
+            ball['speed'][0] = -ball['speed'][0] * 1  # 添加一点阻尼
         if ball['rect'].right >= gamearea['right']:
             ball['rect'].right = gamearea['right']
-            ball['speed'][0] = -ball['speed'][0] * 0.8
+            ball['speed'][0] = -ball['speed'][0] * 1
         
         # 上下边界
         if ball['rect'].top <= gamearea['top']:
             ball['rect'].top = gamearea['top']
-            ball['speed'][1] = -ball['speed'][1] * 0.8
+            ball['speed'][1] = -ball['speed'][1] * 1
         if ball['rect'].bottom >= gamearea['bottom']:
             ball['rect'].bottom = gamearea['bottom']
-            ball['speed'][1] = -ball['speed'][1] * 0.8
+            ball['speed'][1] = -ball['speed'][1] * 1
     
     # 检测并处理球体之间的碰撞
     if len(balls) >= 2:
@@ -301,6 +376,8 @@ while running:
             updated_float_texts.append(text_obj)
     float_texts = updated_float_texts
 
+    draw_progress()
+    draw_whiteball_count()
     pygame.display.flip()
     clock.tick(60)
 
