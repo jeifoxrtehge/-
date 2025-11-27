@@ -41,6 +41,11 @@ progress_bar = {
     'fill_color': (0, 255, 128)
 }
 
+speedup_image = pygame.transform.scale(pygame.image.load('pic/speedupball.png'),  (bsize//2, bsize//2))
+speedup_remain = 3
+speedup_active = False
+speedup_timer = 0
+speed_multiplier = 2
 
 cbsize = 64
 colorball_images = [None]
@@ -96,6 +101,22 @@ def draw_whiteball_count():
     count_surface = font.render(count_text, True, (255, 255, 255))
     count_x = icon_x + ball_image.get_width() + 10
     count_y = icon_y + (ball_image.get_height() - count_surface.get_height()) // 2
+    screen.blit(count_surface, (count_x, count_y))
+
+def draw_speedup_count():
+    global speedup_remain
+    speedup_icon = speedup_image
+    icon_x = screen_width - 110 - speedup_icon.get_width()
+    icon_y = progress_bar['y'] + 270
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    if (icon_x <= mouse_x <= icon_x + speedup_icon.get_width() and
+        icon_y <= mouse_y <= icon_y + speedup_icon.get_height()):
+        pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, speedup_icon.get_width() + 10, speedup_icon.get_height() + 10), border_radius=10)
+    screen.blit(speedup_icon, (icon_x, icon_y))
+    count_text = f"x {speedup_remain}"
+    count_surface = font.render(count_text, True, (255, 255, 255))
+    count_x = icon_x + speedup_icon.get_width() + 10
+    count_y = icon_y + (speedup_icon.get_height() - count_surface.get_height()) // 2
     screen.blit(count_surface, (count_x, count_y))
 
 def draw_progress():
@@ -267,6 +288,16 @@ while running:
                     'current_size': min_ghost_size,
                     'scale_dir': 1
                 }
+
+            speedup_image_rect = speedup_image.get_rect(
+                topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 250)
+            )
+            if speedup_image_rect.collidepoint(click_x, click_y):
+                if not speedup_active and speedup_remain > 0:
+                    speedup_remain -= 1
+                    speedup_active = True
+                    speedup_timer = 10 * 60
+
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
             if ball_remain <= 0:
                 continue
@@ -298,7 +329,12 @@ while running:
                 'type' : 0,
             })
             ghost_ball = None
-    
+
+    if speedup_active:
+        speedup_timer -= 1
+        if speedup_timer <= 0:
+            speedup_active = False
+
     screen.fill((0, 0, 0))
     screen.blit(gameback, gameback.get_rect())
 
@@ -331,8 +367,9 @@ while running:
 
     # 更新所有球体位置
     for ball in balls:
-        ball['rect'].x += ball['speed'][0]
-        ball['rect'].y += ball['speed'][1]
+        sm = speed_multiplier if speedup_active else 1
+        ball['rect'].x += ball['speed'][0] * sm
+        ball['rect'].y += ball['speed'][1] * sm
         
         # 边界碰撞检测
         ball_radius = ball['rect'].width // 2
@@ -378,6 +415,7 @@ while running:
 
     draw_progress()
     draw_whiteball_count()
+    draw_speedup_count()
     pygame.display.flip()
     clock.tick(60)
 
