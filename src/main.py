@@ -90,13 +90,17 @@ level_configs = [
 # 道具解锁配置
 unlock_config = {
     'speedup': 3,    # 第3关解锁加速道具
-    'levelup': 4     # 第4关解锁升级道具
+    'levelup': 4,    # 第4关解锁升级道具
+    'video': 5       # 新增：第5关解锁视频功能（KK按钮）
 }
 
 # 锁定图标（红色叉号）
 lock_surface = pygame.Surface((bsize//4, bsize//4), pygame.SRCALPHA)
 pygame.draw.line(lock_surface, (255, 0, 0), (10, 10), (lock_surface.get_width()-10, lock_surface.get_height()-10), 5)
 pygame.draw.line(lock_surface, (255, 0, 0), (lock_surface.get_width()-10, 10), (10, lock_surface.get_height()-10), 5)
+
+# 新增：视频功能锁定提示文本的字体
+hint_font = pygame.font.Font(None, 24)
 
 speedup_image = None
 try:
@@ -779,6 +783,19 @@ def init_level(level):
             'alpha': 255,
             'life': 180  # 显示3秒
         })
+    # 新增：第5关解锁视频功能的提示
+    elif level == unlock_config['video']:
+        unlock_text = "恭喜解锁 视频功能！观看视频可获得道具奖励"
+        text_surface = font.render(unlock_text, True, (0, 128, 255))
+        shadow_surface = font.render(unlock_text, True, (0, 0, 0))
+        float_texts.append({
+            'shadow': shadow_surface,
+            'text': text_surface,
+            'x': screen_width // 2,
+            'y': screen_height // 2 + 60,
+            'alpha': 255,
+            'life': 240  # 显示4秒
+        })
 
 def check_level_up():
     """检查是否升级关卡"""
@@ -821,9 +838,33 @@ def start_video():
         video_capture = cv2.VideoCapture('video/kk.mp4')
         if not video_capture.isOpened():
             print("无法打开视频文件")
+            # 显示视频加载失败提示
+            error_text = "视频文件加载失败！"
+            text_surface = font.render(error_text, True, (255, 0, 0))
+            shadow_surface = font.render(error_text, True, (0, 0, 0))
+            float_texts.append({
+                'shadow': shadow_surface,
+                'text': text_surface,
+                'x': screen_width // 2,
+                'y': screen_height // 2,
+                'alpha': 255,
+                'life': 120  # 显示2秒
+            })
             return False
     except Exception as e:
         print(f"视频加载错误: {e}")
+        # 显示视频加载失败提示
+        error_text = "视频加载失败！"
+        text_surface = font.render(error_text, True, (255, 0, 0))
+        shadow_surface = font.render(error_text, True, (0, 0, 0))
+        float_texts.append({
+            'shadow': shadow_surface,
+            'text': text_surface,
+            'x': screen_width // 2,
+            'y': screen_height // 2,
+            'alpha': 255,
+            'life': 120  # 显示2秒
+        })
         return False
     
     # 设置视频显示区域（游戏区域内，居中显示，保持宽高比）
@@ -905,17 +946,32 @@ def reward_random_item():
     })
 
 def draw_kk_button():
-    """绘制KK按钮"""
+    """绘制KK按钮（添加解锁逻辑）"""
     global kk_button_rect
     mouse_x, mouse_y = pygame.mouse.get_pos()
+    # 检查视频功能是否解锁
+    is_video_unlocked = current_level >= unlock_config['video']
     
-    # 按钮悬停效果
-    if kk_button_rect.collidepoint(mouse_x, mouse_y):
-        # 绘制高亮边框
-        pygame.draw.circle(screen, (255, 255, 0), kk_button_rect.center, kk_button_rect.width//2 + 5, 3)
-    
-    # 绘制按钮图片
-    screen.blit(kk_button_image, kk_button_rect)
+    if not is_video_unlocked:
+        # 未解锁：绘制半透明按钮 + 锁定图标 + 解锁提示
+        # 半透明按钮
+        locked_button = kk_button_image.copy()
+        locked_button.set_alpha(100)
+        screen.blit(locked_button, kk_button_rect)
+        
+        # 锁定图标（居中显示在按钮上）
+        lock_x = kk_button_rect.centerx - lock_surface.get_width() // 2
+        lock_y = kk_button_rect.centery - lock_surface.get_height() // 2
+        screen.blit(lock_surface, (lock_x, lock_y))
+        
+    else:
+        # 已解锁：正常绘制按钮，添加悬停效果
+        if kk_button_rect.collidepoint(mouse_x, mouse_y):
+            # 绘制高亮边框
+            pygame.draw.circle(screen, (255, 255, 0), kk_button_rect.center, kk_button_rect.width//2 + 5, 3)
+        
+        # 绘制按钮图片
+        screen.blit(kk_button_image, kk_button_rect)
 
 def draw_video():
     """绘制视频和倒计时"""
@@ -973,9 +1029,24 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             click_x, click_y = event.pos
             
-            # 优先检测KK按钮点击（视频未播放时）
+            # 优先检测KK按钮点击（添加解锁判断）
             if not video_playing and kk_button_rect.collidepoint(click_x, click_y):
-                start_video()
+                # 检查视频功能是否解锁
+                if current_level >= unlock_config['video']:
+                    start_video()
+                else:
+                    # 未解锁时点击提示
+                    lock_text = "第5关解锁视频功能！"
+                    text_surface = small_font.render(lock_text, True, (255, 0, 0))
+                    shadow_surface = small_font.render(lock_text, True, (0, 0, 0))
+                    float_texts.append({
+                        'shadow': shadow_surface,
+                        'text': text_surface,
+                        'x': click_x,
+                        'y': click_y - 40,
+                        'alpha': 255,
+                        'life': 90  # 显示1.5秒
+                    })
                 continue
             
             # 检查点击位置是否在游戏区域内（视频未播放时）
