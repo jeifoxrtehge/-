@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+import cv2  # 用于视频解码
+import numpy as np  # 用于图像格式转换
 
 pygame.init()
 
@@ -26,6 +28,28 @@ except FileNotFoundError:
     # 如果背景图片不存在，使用灰色背景
     gameback = pygame.Surface((screen_width, screen_height))
     gameback.fill((128, 128, 128))
+
+# 加载KK按钮图片
+kk_button_image = None
+kk_button_size = (128, 128)  # 按钮大小
+try:
+    kk_button_image = pygame.transform.scale(pygame.image.load('pic/kkball.png'), kk_button_size)
+except FileNotFoundError:
+    # 替代图片：蓝色圆形按钮
+    kk_button_image = pygame.Surface(kk_button_size, pygame.SRCALPHA)
+    pygame.draw.circle(kk_button_image, (0, 128, 255), (kk_button_size[0]//2, kk_button_size[1]//2), kk_button_size[0]//2)
+    # 添加文字标识
+    kk_text = font.render("KK", True, (255, 255, 255))
+    kk_text_rect = kk_text.get_rect(center=kk_button_image.get_rect().center)
+    kk_button_image.blit(kk_text, kk_text_rect)
+
+# 视频播放相关变量
+video_capture = None
+video_surface = None
+video_playing = False
+video_timer = 0
+max_video_time = 10 * 60  # 10秒（60帧/秒）
+video_rect = None  # 视频显示区域
 
 small_font = pygame.font.Font(None, 32) 
 total_score = 0
@@ -91,28 +115,7 @@ levelup_remain = 3
 # 加载彩球图片时添加错误处理
 cbsize = 64
 colorball_images = [None]
-for i in range(1, 10):
-    try:
-        cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
-    except FileNotFoundError:
-        # 替代图片：根据等级生成渐变颜色的圆形
-        cimage = pygame.Surface((cbsize, cbsize), pygame.SRCALPHA)
-        color = get_score_color(i) if 'get_score_color' in locals() else (255, 0, 0)
-        pygame.draw.circle(cimage, color, (cbsize//2, cbsize//2), cbsize//2)
-    colorball_images.append(cimage)
-
-gamearea = {
-    'left': 70, 'top': 180,
-    'right': 1088, 'bottom': 747
-}
-ghost_ball = None
-scale_speed = 6
-min_ghost_size = 30
-max_ghost_size = 150
-running = True
-clock = pygame.time.Clock()
-
-# 根据分数获取渐变颜色（分数越高越鲜艳）
+# 先定义get_score_color函数的占位，避免加载图片时出错
 def get_score_color(score):
     score = max(1, min(9, score))
     ratio = (score - 1) / 8 
@@ -137,6 +140,31 @@ def get_score_color(score):
         g = int(150 - 100 * (ratio - 0.8) * 5)
         b = int(100 - 100 * (ratio - 0.8) * 5)
     return (r, g, b)
+
+for i in range(1, 10):
+    try:
+        cimage = pygame.transform.scale(pygame.image.load('pic/scoreball/%d.png' % i), (cbsize, cbsize))
+    except FileNotFoundError:
+        # 替代图片：根据等级生成渐变颜色的圆形
+        cimage = pygame.Surface((cbsize, cbsize), pygame.SRCALPHA)
+        color = get_score_color(i)
+        pygame.draw.circle(cimage, color, (cbsize//2, cbsize//2), cbsize//2)
+    colorball_images.append(cimage)
+
+gamearea = {
+    'left': 70, 'top': 180,
+    'right': 1088, 'bottom': 747
+}
+ghost_ball = None
+scale_speed = 6
+min_ghost_size = 30
+max_ghost_size = 150
+running = True
+clock = pygame.time.Clock()
+
+# KK按钮位置（右下角）
+kk_button_rect = kk_button_image.get_rect()
+kk_button_rect.bottomright = (screen_width - 110, screen_height - 90)  # 距离右下角20像素
 
 def draw_whiteball_count():
     global ball_remain
@@ -501,6 +529,157 @@ def check_level_up():
                 'life': 300  # 显示5秒
             })
 
+def start_video():
+    """启动视频播放"""
+    global video_capture, video_playing, video_timer, video_rect
+    
+    # 初始化视频捕获
+    try:
+        video_capture = cv2.VideoCapture('video/kk.mp4')
+        if not video_capture.isOpened():
+            print("无法打开视频文件")
+            return False
+    except Exception as e:
+        print(f"视频加载错误: {e}")
+        return False
+    
+    # 设置视频显示区域（游戏区域内，居中显示，保持宽高比）
+    video_width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # 计算视频缩放比例，确保适应游戏区域
+    gamearea_width = gamearea['right'] - gamearea['left']
+    gamearea_height = gamearea['bottom'] - gamearea['top']
+    
+    scale = min(gamearea_width / video_width, gamearea_height / video_height) * 0.9  # 留10%边距
+    new_video_width = int(video_width * scale)
+    new_video_height = int(video_height * scale)
+    
+    # 居中显示
+    video_x = gamearea['left'] + (gamearea_width - new_video_width) // 2
+    video_y = gamearea['top'] + (gamearea_height - new_video_height) // 2
+    video_rect = pygame.Rect(video_x, video_y, new_video_width, new_video_height)
+    
+    video_playing = True
+    video_timer = max_video_time
+    return True
+
+def stop_video():
+    """停止视频播放"""
+    global video_capture, video_playing
+    
+    if video_capture:
+        video_capture.release()
+        video_capture = None
+    video_playing = False
+    
+    # 随机奖励一种道具
+    reward_random_item()
+
+def reward_random_item():
+    """随机奖励一种道具"""
+    global ball_remain, speedup_remain, levelup_remain
+    
+    # 选择可奖励的道具（只选择已解锁的）
+    available_items = []
+    if True:  # 白球默认可用
+        available_items.append('whiteball')
+    if current_level >= unlock_config['speedup']:
+        available_items.append('speedup')
+    if current_level >= unlock_config['levelup']:
+        available_items.append('levelup')
+    
+    if not available_items:
+        return
+    
+    # 随机选择一种道具
+    selected_item = random.choice(available_items)
+    
+    # 奖励道具
+    if selected_item == 'whiteball':
+        ball_remain += 1
+        reward_text = "获得白球 +1！"
+        reward_color = (255, 255, 255)
+    elif selected_item == 'speedup':
+        speedup_remain += 1
+        reward_text = "获得加速道具 +1！"
+        reward_color = (128, 0, 255)
+    elif selected_item == 'levelup':
+        levelup_remain += 1
+        reward_text = "获得升级道具 +1！"
+        reward_color = (255, 215, 0)
+    
+    # 显示奖励提示
+    text_surface = font.render(reward_text, True, reward_color)
+    shadow_surface = font.render(reward_text, True, (0, 0, 0))
+    float_texts.append({
+        'shadow': shadow_surface,
+        'text': text_surface,
+        'x': screen_width // 2,
+        'y': screen_height // 2,
+        'alpha': 255,
+        'life': 120  # 显示2秒
+    })
+
+def draw_kk_button():
+    """绘制KK按钮"""
+    global kk_button_rect
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    
+    # 按钮悬停效果
+    if kk_button_rect.collidepoint(mouse_x, mouse_y):
+        # 绘制高亮边框
+        pygame.draw.circle(screen, (255, 255, 0), kk_button_rect.center, kk_button_rect.width//2 + 5, 3)
+    
+    # 绘制按钮图片
+    screen.blit(kk_button_image, kk_button_rect)
+
+def draw_video():
+    """绘制视频和倒计时"""
+    global video_capture, video_surface, video_timer
+    
+    if not video_playing or not video_capture:
+        return
+    
+    # 读取视频帧
+    ret, frame = video_capture.read()
+    if ret:
+        # 转换颜色空间（BGR -> RGB）
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # 调整帧大小以适应显示区域
+        frame_rgb = cv2.resize(frame_rgb, (video_rect.width, video_rect.height))
+        # 转换为pygame表面
+        video_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        # 绘制视频
+        screen.blit(video_surface, video_rect)
+    else:
+        # 视频播放完毕或出错，重新开始播放
+        video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
+    # 绘制倒计时
+    remaining_time = video_timer // 60  # 转换为秒
+    countdown_text = f"{remaining_time}s"
+    # 创建带背景的倒计时文本
+    text_surface = font.render(countdown_text, True, (255, 0, 0))
+    text_rect = text_surface.get_rect()
+    
+    # 倒计时背景（黑色半透明）
+    bg_rect = pygame.Rect(
+        video_rect.right - text_rect.width - 20,
+        video_rect.top + 10,
+        text_rect.width + 20,
+        text_rect.height + 10
+    )
+    pygame.draw.rect(screen, (0, 0, 0, 180), bg_rect, border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), bg_rect, 2, border_radius=10)
+    
+    # 绘制倒计时文本
+    text_pos = (
+        bg_rect.centerx - text_rect.width//2,
+        bg_rect.centery - text_rect.height//2
+    )
+    screen.blit(text_surface, text_pos)
+
 # 初始化第一关
 init_level(current_level)
 
@@ -510,8 +689,14 @@ while running:
             running = False
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             click_x, click_y = event.pos
-            # 检查点击位置是否在游戏区域内
-            if (gamearea['left'] <= click_x <= gamearea['right'] and
+            
+            # 优先检测KK按钮点击（视频未播放时）
+            if not video_playing and kk_button_rect.collidepoint(click_x, click_y):
+                start_video()
+                continue
+            
+            # 检查点击位置是否在游戏区域内（视频未播放时）
+            if not video_playing and (gamearea['left'] <= click_x <= gamearea['right'] and
                 gamearea['top'] <= click_y <= gamearea['bottom']):
                 ghost_ball = {
                     'pos': (click_x, click_y),
@@ -519,8 +704,8 @@ while running:
                     'scale_dir': 1
                 }
 
-            # 加速道具点击检测（只在解锁后有效）
-            if current_level >= unlock_config['speedup']:
+            # 加速道具点击检测（只在解锁后有效，且视频未播放）
+            if not video_playing and current_level >= unlock_config['speedup']:
                 speedup_image_rect = speedup_image.get_rect(
                     topleft=(screen_width - 110 - speedup_image.get_width(), progress_bar['y'] + 270)
                 )
@@ -530,8 +715,8 @@ while running:
                         speedup_active = True
                         speedup_timer = 10 * 60
 
-            # 升级道具点击检测（只在解锁后有效）
-            if current_level >= unlock_config['levelup']:
+            # 升级道具点击检测（只在解锁后有效，且视频未播放）
+            if not video_playing and current_level >= unlock_config['levelup']:
                 levelup_image_rect = levelup_image.get_rect(
                     topleft=(screen_width - 110 - levelup_image.get_width(), progress_bar['y'] + 410)
                 )
@@ -557,7 +742,7 @@ while running:
                                 'life': 60
                             })
 
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None:
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and ghost_ball is not None and not video_playing:
             if ball_remain <= 0:
                 continue
             ball_remain -= 1
@@ -590,80 +775,92 @@ while running:
             })
             ghost_ball = None
 
+    # 视频计时器更新
+    if video_playing:
+        video_timer -= 1
+        if video_timer <= 0:
+            stop_video()
+
     if speedup_active:
         speedup_timer -= 1
         if speedup_timer <= 0:
             speedup_active = False
 
-    # 检查关卡升级
-    check_level_up()
+    # 检查关卡升级（视频未播放时）
+    if not video_playing:
+        check_level_up()
 
     screen.fill((0, 0, 0))
     screen.blit(gameback, gameback.get_rect())
 
-    if ghost_ball is not None:
-        current_size = ghost_ball['current_size'] + ghost_ball['scale_dir'] * scale_speed
-        if current_size >= max_ghost_size:
-            current_size = max_ghost_size
-            ghost_ball['scale_dir'] = -1
-        elif current_size <= min_ghost_size:
-            current_size = min_ghost_size
-            ghost_ball['scale_dir'] = 1
-        ghost_ball['current_size'] = current_size
-        
-        ghost_surface = pygame.transform.scale(scaled_image, (int(current_size), int(current_size)))
-        ghost_surface.set_alpha(128)
-        ghost_rect = ghost_surface.get_rect(center=ghost_ball['pos'])
-        
-        # 确保幽灵球在游戏区域内显示
-        ghost_radius = current_size // 2
-        if ghost_rect.left < gamearea['left']:
-            ghost_rect.left = gamearea['left']
-        if ghost_rect.right > gamearea['right']:
-            ghost_rect.right = gamearea['right']
-        if ghost_rect.top < gamearea['top']:
-            ghost_rect.top = gamearea['top']
-        if ghost_rect.bottom > gamearea['bottom']:
-            ghost_rect.bottom = gamearea['bottom']
-        
-        screen.blit(ghost_surface, ghost_rect)
+    # 绘制视频（如果正在播放）
+    if video_playing:
+        draw_video()
+    else:
+        # 视频未播放时，绘制游戏元素
+        if ghost_ball is not None:
+            current_size = ghost_ball['current_size'] + ghost_ball['scale_dir'] * scale_speed
+            if current_size >= max_ghost_size:
+                current_size = max_ghost_size
+                ghost_ball['scale_dir'] = -1
+            elif current_size <= min_ghost_size:
+                current_size = min_ghost_size
+                ghost_ball['scale_dir'] = 1
+            ghost_ball['current_size'] = current_size
+            
+            ghost_surface = pygame.transform.scale(scaled_image, (int(current_size), int(current_size)))
+            ghost_surface.set_alpha(128)
+            ghost_rect = ghost_surface.get_rect(center=ghost_ball['pos'])
+            
+            # 确保幽灵球在游戏区域内显示
+            ghost_radius = current_size // 2
+            if ghost_rect.left < gamearea['left']:
+                ghost_rect.left = gamearea['left']
+            if ghost_rect.right > gamearea['right']:
+                ghost_rect.right = gamearea['right']
+            if ghost_rect.top < gamearea['top']:
+                ghost_rect.top = gamearea['top']
+            if ghost_rect.bottom > gamearea['bottom']:
+                ghost_rect.bottom = gamearea['bottom']
+            
+            screen.blit(ghost_surface, ghost_rect)
 
-    # 更新所有球体位置
-    for ball in balls:
-        sm = speed_multiplier if speedup_active else 1
-        ball['rect'].x += ball['speed'][0] * sm
-        ball['rect'].y += ball['speed'][1] * sm
+        # 更新所有球体位置
+        for ball in balls:
+            sm = speed_multiplier if speedup_active else 1
+            ball['rect'].x += ball['speed'][0] * sm
+            ball['rect'].y += ball['speed'][1] * sm
+            
+            # 边界碰撞检测
+            ball_radius = ball['rect'].width // 2
+            
+            # 左右边界
+            if ball['rect'].left <= gamearea['left']:
+                ball['rect'].left = gamearea['left']
+                ball['speed'][0] = -ball['speed'][0] * 1  # 添加一点阻尼
+            if ball['rect'].right >= gamearea['right']:
+                ball['rect'].right = gamearea['right']
+                ball['speed'][0] = -ball['speed'][0] * 1
+            
+            # 上下边界
+            if ball['rect'].top <= gamearea['top']:
+                ball['rect'].top = gamearea['top']
+                ball['speed'][1] = -ball['speed'][1] * 1
+            if ball['rect'].bottom >= gamearea['bottom']:
+                ball['rect'].bottom = gamearea['bottom']
+                ball['speed'][1] = -ball['speed'][1] * 1
         
-        # 边界碰撞检测
-        ball_radius = ball['rect'].width // 2
+        # 检测并处理球体之间的碰撞
+        if len(balls) >= 2:
+            check_ball_collisions(balls)
         
-        # 左右边界
-        if ball['rect'].left <= gamearea['left']:
-            ball['rect'].left = gamearea['left']
-            ball['speed'][0] = -ball['speed'][0] * 1  # 添加一点阻尼
-        if ball['rect'].right >= gamearea['right']:
-            ball['rect'].right = gamearea['right']
-            ball['speed'][0] = -ball['speed'][0] * 1
-        
-        # 上下边界
-        if ball['rect'].top <= gamearea['top']:
-            ball['rect'].top = gamearea['top']
-            ball['speed'][1] = -ball['speed'][1] * 1
-        if ball['rect'].bottom >= gamearea['bottom']:
-            ball['rect'].bottom = gamearea['bottom']
-            ball['speed'][1] = -ball['speed'][1] * 1
-    
-    # 检测并处理球体之间的碰撞
-    if len(balls) >= 2:
-        check_ball_collisions(balls)
-    
-    # 绘制所有球体
-    for ball in balls:
-        screen.blit(ball['image'], ball['rect'])
-        if ball.get('level'):
-            text = small_font.render(f"x{ball['level']}", True, (0, 0, 0))
-            screen.blit(text, ( (ball['rect'].x + ball['rect'].right)//2 - 16, 
-                               (ball['rect'].y + ball['rect'].bottom) // 2 - 16)  )
+        # 绘制所有球体
+        for ball in balls:
+            screen.blit(ball['image'], ball['rect'])
+            if ball.get('level'):
+                text = small_font.render(f"x{ball['level']}", True, (0, 0, 0))
+                screen.blit(text, ( (ball['rect'].x + ball['rect'].right)//2 - 16, 
+                                   (ball['rect'].y + ball['rect'].bottom) // 2 - 16)  )
 
     # 更新并绘制浮动文本
     updated_float_texts = []
@@ -687,8 +884,11 @@ while running:
     draw_speedup_count()
     draw_levelup_count()
     
+    # 绘制KK按钮（始终显示在最上层）
+    draw_kk_button()
+    
     # 如果是最后一关且已通关，显示通关提示
-    if current_level == 10 and total_score >= level_configs[9]['target_score']:
+    if current_level == 10 and total_score >= level_configs[9]['target_score'] and not video_playing:
         clear_text = "Mission Complete!"
         text_surface = font.render(clear_text, True, (255, 215, 0))
         text_rect = text_surface.get_rect(center=(screen_width//2, screen_height//2 - 50))
@@ -697,4 +897,8 @@ while running:
     pygame.display.flip()
     clock.tick(60)
 
+# 清理资源
+if video_capture:
+    video_capture.release()
+cv2.destroyAllWindows()
 pygame.quit()
