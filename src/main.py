@@ -760,7 +760,7 @@ def init_level(level):
     
     # 检查是否解锁新道具，显示解锁提示
     if level == unlock_config['speedup']:
-        unlock_text = "恭喜解锁 加速道具！"
+        unlock_text = "Unlock Speedup Item"
         text_surface = font.render(unlock_text, True, (128, 0, 255))
         shadow_surface = font.render(unlock_text, True, (0, 0, 0))
         float_texts.append({
@@ -772,7 +772,7 @@ def init_level(level):
             'life': 180  # 显示3秒
         })
     elif level == unlock_config['levelup']:
-        unlock_text = "恭喜解锁 升级道具！"
+        unlock_text = "Unlock Levelup Item"
         text_surface = font.render(unlock_text, True, (255, 215, 0))
         shadow_surface = font.render(unlock_text, True, (0, 0, 0))
         float_texts.append({
@@ -785,7 +785,7 @@ def init_level(level):
         })
     # 新增：第5关解锁视频功能的提示
     elif level == unlock_config['video']:
-        unlock_text = "恭喜解锁 视频功能！观看视频可获得道具奖励"
+        unlock_text = "Unlock Video Item"
         text_surface = font.render(unlock_text, True, (0, 128, 255))
         shadow_surface = font.render(unlock_text, True, (0, 0, 0))
         float_texts.append({
@@ -811,7 +811,7 @@ def check_level_up():
             init_level(current_level)
         else:
             # 通关提示
-            clear_text = "恭喜！所有关卡已通关！"
+            clear_text = "Unblivble"
             text_surface = font.render(clear_text, True, (255, 215, 0))
             shadow_surface = font.render(clear_text, True, (0, 0, 0))
             float_texts.append({
@@ -922,15 +922,15 @@ def reward_random_item():
     # 奖励道具
     if selected_item == 'whiteball':
         ball_remain += 1
-        reward_text = "获得白球 +1！"
+        reward_text = ""
         reward_color = (255, 255, 255)
     elif selected_item == 'speedup':
         speedup_remain += 1
-        reward_text = "获得加速道具 +1！"
+        reward_text = ""
         reward_color = (128, 0, 255)
     elif selected_item == 'levelup':
         levelup_remain += 1
-        reward_text = "获得升级道具 +1！"
+        reward_text = ""
         reward_color = (255, 215, 0)
     
     # 显示奖励提示
@@ -1036,7 +1036,7 @@ while running:
                     start_video()
                 else:
                     # 未解锁时点击提示
-                    lock_text = "第5关解锁视频功能！"
+                    lock_text = ""
                     text_surface = small_font.render(lock_text, True, (255, 0, 0))
                     shadow_surface = small_font.render(lock_text, True, (0, 0, 0))
                     float_texts.append({
@@ -1069,7 +1069,7 @@ while running:
                         speedup_active = True
                         speedup_timer = 10 * 60
                         # 显示加速激活提示
-                        activate_text = "加速激活！"
+                        activate_text = ""
                         text_surface = font.render(activate_text, True, (128, 0, 255))
                         shadow_surface = font.render(activate_text, True, (0, 0, 0))
                         float_texts.append({
@@ -1153,7 +1153,7 @@ while running:
             speedup_active = False
             trail_particles = []  # 加速结束后清空残影
             # 显示加速结束提示
-            end_text = "加速结束！"
+            end_text = ""
             text_surface = font.render(end_text, True, (128, 0, 255))
             shadow_surface = font.render(end_text, True, (0, 0, 0))
             float_texts.append({
