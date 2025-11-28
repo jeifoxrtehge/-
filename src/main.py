@@ -58,7 +58,7 @@ video_rect = None  # 视频显示区域
 
 small_font = pygame.font.Font(None, 32) 
 total_score = 0
-current_level = 3
+current_level = 1
 ball_remain = 3
 progress_bar = {
     'x': 40,
