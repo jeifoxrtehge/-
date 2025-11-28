@@ -16,6 +16,8 @@ font = pygame.font.Font(None, 48)
 
 # 新增：火花粒子列表
 spark_particles = []
+# 新增：残影列表
+trail_particles = []
     
 # 加载图片时添加错误处理
 try:
@@ -56,7 +58,7 @@ video_rect = None  # 视频显示区域
 
 small_font = pygame.font.Font(None, 32) 
 total_score = 0
-current_level = 1
+current_level = 3
 ball_remain = 3
 progress_bar = {
     'x': 40,
@@ -107,6 +109,16 @@ speedup_remain = 3
 speedup_active = False
 speedup_timer = 0
 speed_multiplier = 2
+
+# 新增：残影配置
+TRAIL_CONFIG = {
+    'max_count': 8,          # 每个球最大残影数量
+    'alpha_step': 30,        # 每个残影的透明度递减值
+    'size_scale': 0.95,      # 每个残影的尺寸缩放比例
+    'life': 15,              # 残影生命周期（帧）
+    'white_ball_color': (255, 255, 255, 180),  # 白球残影基础颜色（带透明度）
+    'trail_offset': 1.0      # 残影与原球的距离比例
+}
 
 levelup_image = None
 try:
@@ -242,6 +254,102 @@ def update_and_draw_sparks():
     # 更新火花列表
     spark_particles = updated_sparks
 
+# 新增：创建球体残影
+def create_ball_trail(ball):
+    """为球体创建残影（仅在加速状态下）"""
+    global trail_particles
+    
+    if not speedup_active:
+        return
+    
+    # 获取球体基本信息
+    ball_type = ball['type']
+    ball_rect = ball['rect']
+    ball_speed = ball['speed']
+    ball_size = ball_rect.width
+    
+    # 计算残影位置：在球体移动方向的反方向
+    speed_mag = math.hypot(ball_speed[0], ball_speed[1])
+    if speed_mag < 1:  # 速度过慢时不创建残影
+        return
+    
+    # 计算移动方向的反方向单位向量
+    dir_x = -ball_speed[0] / speed_mag
+    dir_y = -ball_speed[1] / speed_mag
+    
+    # 残影与原球的距离（根据速度调整）
+    distance = speed_mag * TRAIL_CONFIG['trail_offset']
+    
+    # 残影位置
+    trail_x = ball_rect.centerx + dir_x * distance
+    trail_y = ball_rect.centery + dir_y * distance
+    
+    # 确定残影颜色
+    if ball_type == 0:  # 白球
+        base_color = TRAIL_CONFIG['white_ball_color']
+    else:  # 彩球
+        base_color = get_score_color(ball_type)
+        base_color = (*base_color, 180)  # 添加透明度
+    
+    # 添加残影到列表
+    trail_particles.append({
+        'x': trail_x,
+        'y': trail_y,
+        'size': ball_size,
+        'type': ball_type,
+        'color': base_color,
+        'life': TRAIL_CONFIG['life'],
+        'alpha': base_color[3]
+    })
+
+# 新增：更新并绘制所有残影
+def update_and_draw_trails():
+    """更新并绘制所有球体残影"""
+    global trail_particles
+    updated_trails = []
+    
+    # 按生命周期排序，让新的残影在前面（更靠近原球）
+    trail_particles.sort(key=lambda t: t['life'], reverse=True)
+    
+    for trail in trail_particles:
+        # 更新生命周期和透明度
+        trail['life'] -= 1
+        trail['alpha'] -= TRAIL_CONFIG['alpha_step']
+        trail['alpha'] = max(0, trail['alpha'])
+        
+        # 缩小残影尺寸
+        trail['size'] *= TRAIL_CONFIG['size_scale']
+        trail['size'] = max(5, trail['size'])  # 最小残影尺寸
+        
+        # 绘制残影
+        if trail['life'] > 0 and trail['alpha'] > 0:
+            trail_surface = pygame.Surface((int(trail['size']), int(trail['size'])), pygame.SRCALPHA)
+            
+            # 根据球体类型绘制残影
+            if trail['type'] == 0:  # 白球残影
+                color_with_alpha = (*trail['color'][:3], int(trail['alpha']))
+                pygame.draw.circle(trail_surface, color_with_alpha, 
+                                 (int(trail['size'])//2, int(trail['size'])//2), 
+                                 int(trail['size'])//2)
+            else:  # 彩球残影
+                color_with_alpha = (*trail['color'][:3], int(trail['alpha']))
+                pygame.draw.circle(trail_surface, color_with_alpha, 
+                                 (int(trail['size'])//2, int(trail['size'])//2), 
+                                 int(trail['size'])//2)
+            
+            # 绘制到屏幕
+            trail_rect = trail_surface.get_rect(center=(int(trail['x']), int(trail['y'])))
+            screen.blit(trail_surface, trail_rect)
+            
+            updated_trails.append(trail)
+    
+    # 限制每个球的残影数量（避免性能问题）
+    if len(updated_trails) > len(balls) * TRAIL_CONFIG['max_count']:
+        # 保留最新的残影
+        updated_trails = updated_trails[:len(balls) * TRAIL_CONFIG['max_count']]
+    
+    trail_particles = updated_trails
+
 def draw_whiteball_count():
     global ball_remain
     ball_image = pygame.transform.scale(scaled_image, (bsize//2, bsize//2))
@@ -255,7 +363,7 @@ def draw_whiteball_count():
     screen.blit(count_surface, (count_x, count_y))
 
 def draw_speedup_count():
-    global speedup_remain, current_level
+    global speedup_remain, current_level, speedup_active
     speedup_icon = speedup_image
     icon_x = screen_width - 110 - speedup_icon.get_width()
     icon_y = progress_bar['y'] + 270
@@ -281,6 +389,25 @@ def draw_speedup_count():
         if (icon_x <= mouse_x <= icon_x + speedup_icon.get_width() and
             icon_y <= mouse_y <= icon_y + speedup_icon.get_height()):
             pygame.draw.rect(screen, (67, 12, 255, 30), (icon_x - 5, icon_y - 5, speedup_icon.get_width() + 10, speedup_icon.get_height() + 10), border_radius=10)
+        
+        # 加速状态下绘制闪烁效果
+        if speedup_active:
+            # 绘制彩色光晕背景
+            glow_surface = pygame.Surface((speedup_icon.get_width() + 20, speedup_icon.get_height() + 20), pygame.SRCALPHA)
+            # 闪烁的紫色光晕
+            alpha = 100 + int(50 * math.sin(pygame.time.get_ticks() / 100))
+            pygame.draw.circle(glow_surface, (128, 0, 255, alpha), 
+                             (glow_surface.get_width()//2, glow_surface.get_height()//2), 
+                             glow_surface.get_width()//2)
+            screen.blit(glow_surface, (icon_x - 10, icon_y - 10))
+            
+            # 绘制加速剩余时间
+            remaining_time = speedup_timer // 60
+            time_text = f"{remaining_time}s"
+            time_surface = small_font.render(time_text, True, (255, 255, 255))
+            time_rect = time_surface.get_rect(center=(icon_x + speedup_icon.get_width() + 5, icon_y + speedup_icon.get_height() - 5 ))
+            screen.blit(time_surface, time_rect)
+        
         screen.blit(speedup_icon, (icon_x, icon_y))
         count_text = f"x {speedup_remain}"
         count_surface = font.render(count_text, True, (255, 255, 255))
@@ -558,13 +685,14 @@ def check_ball_collisions(balls):
 def init_level(level):
     """初始化指定关卡"""
     global balls, total_score, ball_remain, speedup_remain, levelup_remain, float_texts
-    global ghost_ball, speedup_active, speedup_timer, spark_particles, progress_bar
+    global ghost_ball, speedup_active, speedup_timer, spark_particles, progress_bar, trail_particles
     
-    # 重置游戏状态（包括火花粒子）
+    # 重置游戏状态（包括火花粒子和残影）
     balls = []
     total_score = 0
     float_texts = []
     spark_particles = []  # 重置火花粒子
+    trail_particles = []   # 重置残影
     ghost_ball = None
     speedup_active = False
     speedup_timer = 0
@@ -680,7 +808,13 @@ def check_level_up():
 
 def start_video():
     """启动视频播放"""
-    global video_capture, video_playing, video_timer, video_rect
+    global video_capture, video_playing, video_timer, video_rect, trail_particles
+    
+    # 停止加速效果和残影
+    global speedup_active, speedup_timer
+    speedup_active = False
+    speedup_timer = 0
+    trail_particles = []  # 清空残影
     
     # 初始化视频捕获
     try:
@@ -863,6 +997,18 @@ while running:
                         speedup_remain -= 1
                         speedup_active = True
                         speedup_timer = 10 * 60
+                        # 显示加速激活提示
+                        activate_text = "加速激活！"
+                        text_surface = font.render(activate_text, True, (128, 0, 255))
+                        shadow_surface = font.render(activate_text, True, (0, 0, 0))
+                        float_texts.append({
+                            'shadow': shadow_surface,
+                            'text': text_surface,
+                            'x': click_x,
+                            'y': click_y - 50,
+                            'alpha': 255,
+                            'life': 60
+                        })
 
             # 升级道具点击检测（只在解锁后有效，且视频未播放）
             if not video_playing and current_level >= unlock_config['levelup']:
@@ -934,6 +1080,19 @@ while running:
         speedup_timer -= 1
         if speedup_timer <= 0:
             speedup_active = False
+            trail_particles = []  # 加速结束后清空残影
+            # 显示加速结束提示
+            end_text = "加速结束！"
+            text_surface = font.render(end_text, True, (128, 0, 255))
+            shadow_surface = font.render(end_text, True, (0, 0, 0))
+            float_texts.append({
+                'shadow': shadow_surface,
+                'text': text_surface,
+                'x': screen_width // 2,
+                'y': screen_height // 2,
+                'alpha': 255,
+                'life': 60
+            })
 
     # 检查关卡升级（视频未播放时）
     if not video_playing:
@@ -1002,6 +1161,14 @@ while running:
         # 检测并处理球体之间的碰撞
         if len(balls) >= 2:
             check_ball_collisions(balls)
+        
+        # 新增：为每个球体创建残影（仅加速状态）
+        if speedup_active:
+            for ball in balls:
+                create_ball_trail(ball)
+        
+        # 新增：更新并绘制残影（在球体绘制之前，让残影在球体下方）
+        update_and_draw_trails()
         
         # 绘制所有球体
         for ball in balls:
