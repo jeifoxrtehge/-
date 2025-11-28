@@ -13,6 +13,9 @@ bsize = 256
 
 float_texts = []
 font = pygame.font.Font(None, 48)
+
+# 新增：火花粒子列表
+spark_particles = []
     
 # 加载图片时添加错误处理
 try:
@@ -166,6 +169,77 @@ clock = pygame.time.Clock()
 # KK按钮位置（右下角）
 kk_button_rect = kk_button_image.get_rect()
 kk_button_rect.bottomright = (screen_width - 110, screen_height - 90)  # 距离右下角20像素
+
+# 新增：火花颜色配置（暖色调为主，模拟火焰效果）
+SPARK_COLORS = [
+    (255, 50, 50),    # 红色
+    (255, 150, 50),   # 橙色
+    (255, 230, 50),   # 黄色
+    (255, 100, 100),  # 浅红
+    (255, 200, 100),  # 浅橙
+    (255, 255, 100)   # 浅黄色
+]
+
+def create_sparks(x, y, count=15):
+    """在指定位置创建火花粒子"""
+    global spark_particles
+    for _ in range(count):
+        # 随机方向（360度）
+        angle = random.uniform(0, 2 * math.pi)
+        # 随机速度（1-4像素/帧）
+        speed = random.uniform(1, 4)
+        # 随机大小（2-4像素）
+        size = random.uniform(2, 4)
+        # 随机颜色
+        color = random.choice(SPARK_COLORS)
+        # 随机生命周期（15-30帧，约0.25-0.5秒）
+        life = random.randint(15, 30)
+        
+        spark_particles.append({
+            'x': x,
+            'y': y,
+            'dx': math.cos(angle) * speed,
+            'dy': math.sin(angle) * speed,
+            'size': size,
+            'color': color,
+            'life': life,
+            'alpha': 255
+        })
+
+def update_and_draw_sparks():
+    """更新并绘制所有火花粒子"""
+    global spark_particles
+    updated_sparks = []
+    
+    for spark in spark_particles:
+        # 更新位置
+        spark['x'] += spark['dx']
+        spark['y'] += spark['dy']
+        
+        # 衰减生命周期和透明度
+        spark['life'] -= 1
+        spark['alpha'] -= 8  # 每帧降低透明度
+        
+        # 保持透明度非负
+        spark['alpha'] = max(0, spark['alpha'])
+        
+        # 绘制火花（圆形粒子）
+        if spark['life'] > 0 and spark['alpha'] > 0:
+            # 创建临时表面绘制带透明度的圆形
+            spark_surface = pygame.Surface((int(spark['size']), int(spark['size'])), pygame.SRCALPHA)
+            color_with_alpha = (*spark['color'], spark['alpha'])
+            pygame.draw.circle(spark_surface, color_with_alpha, 
+                             (int(spark['size'])//2, int(spark['size'])//2), 
+                             int(spark['size'])//2)
+            
+            # 绘制到屏幕
+            screen.blit(spark_surface, (int(spark['x']), int(spark['y'])))
+            
+            # 保留还存活的火花
+            updated_sparks.append(spark)
+    
+    # 更新火花列表
+    spark_particles = updated_sparks
 
 def draw_whiteball_count():
     global ball_remain
@@ -382,6 +456,11 @@ def check_ball_collisions(balls):
             
             # 如果发生碰撞
             if distance < min_distance:
+                # 新增：在碰撞位置创建火花效果
+                collision_x = (x1 + x2) // 2  # 碰撞中心点x坐标
+                collision_y = (y1 + y2) // 2  # 碰撞中心点y坐标
+                create_sparks(collision_x, collision_y, count=20)  # 创建20个火花粒子
+                
                 # 1. 防止球体重叠：将球体分开到刚好接触的位置
                 overlap = min_distance - distance
                 # 计算分离方向的单位向量
@@ -464,12 +543,13 @@ def check_ball_collisions(balls):
 def init_level(level):
     """初始化指定关卡"""
     global balls, total_score, ball_remain, speedup_remain, levelup_remain, float_texts
-    global ghost_ball, speedup_active, speedup_timer
+    global ghost_ball, speedup_active, speedup_timer, spark_particles
     
-    # 重置游戏状态
+    # 重置游戏状态（包括火花粒子）
     balls = []
     total_score = 0
     float_texts = []
+    spark_particles = []  # 重置火花粒子
     ghost_ball = None
     speedup_active = False
     speedup_timer = 0
@@ -913,6 +993,9 @@ while running:
                 text = small_font.render(f"x{ball['level']}", True, (0, 0, 0))
                 screen.blit(text, ( (ball['rect'].x + ball['rect'].right)//2 - 16, 
                                    (ball['rect'].y + ball['rect'].bottom) // 2 - 16)  )
+
+    # 新增：更新并绘制火花效果（在浮动文本之前绘制，避免遮挡）
+    update_and_draw_sparks()
 
     # 更新并绘制浮动文本
     updated_float_texts = []
