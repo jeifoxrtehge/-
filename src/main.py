@@ -76,9 +76,9 @@ progress_bar = {
 level_configs = [
     # 关卡1-10：{目标分值, 初始白球数, 彩球数量, 彩球最大等级}
     {'target_score': 10, 'init_white_balls': 1, 'color_ball_count': 1},
-    {'target_score': 100, 'init_white_balls': 2, 'color_ball_count': 2},
-    {'target_score': 1000, 'init_white_balls': 3, 'color_ball_count': 3},
-    {'target_score': 5000, 'init_white_balls': 4, 'color_ball_count': 4},
+    {'target_score': 50, 'init_white_balls': 2, 'color_ball_count': 2},
+    {'target_score': 300, 'init_white_balls': 3, 'color_ball_count': 3},
+    {'target_score': 2000, 'init_white_balls': 4, 'color_ball_count': 4},
     {'target_score': 10000, 'init_white_balls': 4, 'color_ball_count': 5},
     {'target_score': 100000, 'init_white_balls': 4, 'color_ball_count': 6},
     {'target_score': 1000000, 'init_white_balls': 5, 'color_ball_count': 7},
