@@ -61,8 +61,9 @@ progress_bar = {
     'width': 1300,
     'height': 30,
     'border_color': (255, 255, 255),
-    'bg_color': (50, 50, 50),
-    'fill_color': (0, 255, 128)
+    'bg_color': (50, 50, 50),  # 进度条背景色（未填充部分）
+    'gradient_start': (255, 0, 0),  # 渐变起始色（红色）
+    'gradient_end': (128, 0, 255)   # 渐变结束色（紫色）
 }
 
 # 关卡配置：每关的目标分值、初始白球数、彩球数量
@@ -246,6 +247,35 @@ def draw_levelup_count():
         count_y = icon_y + (levelup_icon.get_height() - count_surface.get_height()) // 2
         screen.blit(count_surface, (count_x, count_y))
 
+def draw_gradient_rect(surface, rect, start_color, end_color):
+    """绘制线性渐变矩形（水平方向）"""
+    # 创建一个临时表面，用于绘制渐变
+    temp_surface = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    
+    # 水平渐变：从左到右，从start_color过渡到end_color
+    for x in range(rect.width):
+        # 计算当前x位置的颜色比例（0.0~1.0）
+        ratio = x / rect.width
+        
+        # 计算当前颜色
+        r = int(start_color[0] * (1 - ratio) + end_color[0] * ratio)
+        g = int(start_color[1] * (1 - ratio) + end_color[1] * ratio)
+        b = int(start_color[2] * (1 - ratio) + end_color[2] * ratio)
+        
+        # 绘制垂直线（整个高度）
+        pygame.draw.line(temp_surface, (r, g, b), (x, 0), (x, rect.height))
+    
+    # 将渐变表面绘制到目标位置，并应用圆角裁剪
+    # 创建圆角掩码
+    mask = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255), (0, 0, rect.width, rect.height), border_radius=15)
+    
+    # 应用掩码
+    temp_surface.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    
+    # 绘制到目标表面
+    surface.blit(temp_surface, (rect.x, rect.y))
+
 def draw_progress():
     global total_score, current_level
     # 获取当前关卡配置
@@ -254,54 +284,76 @@ def draw_progress():
     current_progress = min(total_score, max_progress)
     fill_width = (current_progress / max_progress) * progress_bar['width']
     
-    # 绘制进度条背景
-    pygame.draw.rect(screen, progress_bar['bg_color'], (
-        progress_bar['x'], 
-        progress_bar['y'], 
-        progress_bar['width'], 
+    # 进度条整体矩形
+    bar_rect = pygame.Rect(
+        progress_bar['x'],
+        progress_bar['y'],
+        progress_bar['width'],
         progress_bar['height']
-    ))
+    )
     
-    # 绘制进度条填充
-    pygame.draw.rect(screen, progress_bar['fill_color'], (
-        progress_bar['x'], 
-        progress_bar['y'], 
-        fill_width, 
-        progress_bar['height']
-    ))
+    # 1. 绘制进度条背景（深色，带圆角）
+    pygame.draw.rect(screen, progress_bar['bg_color'], bar_rect, border_radius=15)
     
-    # 绘制进度条边框
-    pygame.draw.rect(screen, progress_bar['border_color'], (
-        progress_bar['x'], 
-        progress_bar['y'], 
-        progress_bar['width'], 
-        progress_bar['height']
-    ), 3)
+    # 2. 绘制完整的红到紫渐变层（整个进度条宽度）
+    gradient_rect = bar_rect.copy()
+    draw_gradient_rect(screen, gradient_rect, progress_bar['gradient_start'], progress_bar['gradient_end'])
+    
+    # 3. 绘制遮罩层（覆盖未完成的进度部分，保持背景色）
+    if fill_width < progress_bar['width']:
+        mask_rect = pygame.Rect(
+            progress_bar['x'] + fill_width,  # 从已完成进度的末端开始
+            progress_bar['y'],
+            progress_bar['width'] - fill_width,  # 未完成的宽度
+            progress_bar['height']
+        )
+        # 遮罩层使用背景色，带圆角（只显示右侧未完成部分）
+        pygame.draw.rect(screen, progress_bar['bg_color'], mask_rect, border_radius=15)
+        
+        # 修复圆角衔接：左侧遮罩边缘不需要圆角
+        if fill_width > 0:
+            # 绘制一个无圆角的矩形覆盖遮罩的左侧边缘，确保与已完成部分平滑衔接
+            pygame.draw.rect(screen, progress_bar['bg_color'], (
+                progress_bar['x'] + fill_width - 2,  # 稍微向左延伸，避免缝隙
+                progress_bar['y'],
+                progress_bar['width'] - fill_width + 2,
+                progress_bar['height']
+            ))
+    
+    # 4. 绘制进度条边框（白色细边框，带圆角）
+    pygame.draw.rect(screen, progress_bar['border_color'], bar_rect, 3, border_radius=15)
 
-    # 绘制分数文本
+    # 5. 绘制文本（分数、百分比、关卡）
+    # 分数文本（白色，带黑色阴影）
     score_text = f"{current_progress}/{max_progress}"
     score_surface = small_font.render(score_text, True, (255, 255, 255))
+    score_shadow = small_font.render(score_text, True, (0, 0, 0))
     score_rect = score_surface.get_rect(center=(
         progress_bar['x'] + progress_bar['width']//2, 
         progress_bar['y'] + progress_bar['height'] + 20 
     ))
+    screen.blit(score_shadow, (score_rect.x + 1, score_rect.y + 1))
     screen.blit(score_surface, score_rect)
     
-    # 绘制百分比文本
+    # 百分比文本（紫色，带黑色阴影）
     percent = (current_progress / max_progress) * 100
     percent_text = f"{percent:.1f}%"
     percent_surface = small_font.render(percent_text, True, (255, 255, 255))
+    percent_shadow = small_font.render(percent_text, True, (0, 0, 0))
     percent_rect = percent_surface.get_rect(
         topright=(progress_bar['x'] + progress_bar['width'] + 80, progress_bar['y'] + 5)
     )
+    screen.blit(percent_shadow, (percent_rect.x + 2, percent_rect.y + 2))
     screen.blit(percent_surface, percent_rect)
     
-    # 绘制关卡文本（在进度条下方，分数文本左侧）
+    # 关卡文本（金色，带黑色阴影）
     level_text = f"Level: {current_level}"
-    level_surface = small_font.render(level_text, True, (255, 215, 0))  # 金色文本
+    level_surface = small_font.render(level_text, True, (255, 215, 0))
+    level_shadow = small_font.render(level_text, True, (0, 0, 0))
     level_rect = level_surface.get_rect(
         topleft=(progress_bar['x'], progress_bar['y'] + progress_bar['height'] + 20)
     )
+    screen.blit(level_shadow, (level_rect.x + 2, level_rect.y + 2))
     screen.blit(level_surface, level_rect)
 
 # 碰撞检测和响应函数
