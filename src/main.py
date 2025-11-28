@@ -66,7 +66,8 @@ progress_bar = {
     'border_color': (255, 255, 255),
     'bg_color': (50, 50, 50),  # 进度条背景色（未填充部分）
     'gradient_start': (255, 0, 0),  # 渐变起始色（红色）
-    'gradient_end': (128, 0, 255)   # 渐变结束色（紫色）
+    'gradient_end': (128, 0, 255),  # 渐变结束色（紫色）
+    'current_display_progress': 0.0  # 新增：当前显示的进度比例（0.0~1.0），用于平滑动画
 }
 
 # 关卡配置：每关的目标分值、初始白球数、彩球数量
@@ -351,12 +352,26 @@ def draw_gradient_rect(surface, rect, start_color, end_color):
     surface.blit(temp_surface, (rect.x, rect.y))
 
 def draw_progress():
-    global total_score, current_level
+    global total_score, current_level, progress_bar
     # 获取当前关卡配置
     current_config = level_configs[current_level - 1]
     max_progress = current_config['target_score']
-    current_progress = min(total_score, max_progress)
-    fill_width = (current_progress / max_progress) * progress_bar['width']
+    target_progress = min(total_score, max_progress)
+    target_ratio = target_progress / max_progress  # 目标进度比例（0.0~1.0）
+    
+    # 新增：平滑过渡动画（每帧向目标比例靠近1/20，实现渐进效果）
+    # 进度差越小，增长越慢，视觉更自然
+    progress_diff = target_ratio - progress_bar['current_display_progress']
+    if abs(progress_diff) > 0.001:  # 差值小于0.1%时停止动画，避免无限循环
+        # 动态步长：根据差值调整速度，差值大时增速快，差值小时增速慢
+        step = progress_diff * 0.08  # 可调整步长系数（0.05~0.15），越大越快
+        progress_bar['current_display_progress'] += step
+    else:
+        # 差值过小时直接对齐目标值
+        progress_bar['current_display_progress'] = target_ratio
+    
+    # 计算当前显示的填充宽度
+    fill_width = progress_bar['current_display_progress'] * progress_bar['width']
     
     # 进度条整体矩形
     bar_rect = pygame.Rect(
@@ -376,7 +391,7 @@ def draw_progress():
     # 3. 绘制遮罩层（覆盖未完成的进度部分，保持背景色）
     if fill_width < progress_bar['width']:
         mask_rect = pygame.Rect(
-            progress_bar['x'] + fill_width,  # 从已完成进度的末端开始
+            progress_bar['x'] + fill_width,  # 从当前显示进度的末端开始
             progress_bar['y'],
             progress_bar['width'] - fill_width,  # 未完成的宽度
             progress_bar['height']
@@ -397,9 +412,9 @@ def draw_progress():
     # 4. 绘制进度条边框（白色细边框，带圆角）
     pygame.draw.rect(screen, progress_bar['border_color'], bar_rect, 3, border_radius=15)
 
-    # 5. 绘制文本（分数、百分比、关卡）
+    # 5. 绘制文本（分数、百分比、关卡）- 显示当前实际进度（非动画进度）
     # 分数文本（白色，带黑色阴影）
-    score_text = f"{current_progress}/{max_progress}"
+    score_text = f"{int(target_progress)}/{max_progress}"
     score_surface = small_font.render(score_text, True, (255, 255, 255))
     score_shadow = small_font.render(score_text, True, (0, 0, 0))
     score_rect = score_surface.get_rect(center=(
@@ -410,7 +425,7 @@ def draw_progress():
     screen.blit(score_surface, score_rect)
     
     # 百分比文本（紫色，带黑色阴影）
-    percent = (current_progress / max_progress) * 100
+    percent = target_ratio * 100
     percent_text = f"{percent:.1f}%"
     percent_surface = small_font.render(percent_text, True, (255, 255, 255))
     percent_shadow = small_font.render(percent_text, True, (0, 0, 0))
@@ -543,7 +558,7 @@ def check_ball_collisions(balls):
 def init_level(level):
     """初始化指定关卡"""
     global balls, total_score, ball_remain, speedup_remain, levelup_remain, float_texts
-    global ghost_ball, speedup_active, speedup_timer, spark_particles
+    global ghost_ball, speedup_active, speedup_timer, spark_particles, progress_bar
     
     # 重置游戏状态（包括火花粒子）
     balls = []
@@ -553,6 +568,8 @@ def init_level(level):
     ghost_ball = None
     speedup_active = False
     speedup_timer = 0
+    # 新增：重置进度条动画进度（避免切换关卡后进度条跳变）
+    progress_bar['current_display_progress'] = 0.0
     
     # 获取关卡配置
     config = level_configs[level - 1]
