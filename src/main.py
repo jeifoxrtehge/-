@@ -5,6 +5,7 @@ import cv2  # 用于视频解码
 import numpy as np  # 用于图像格式转换
 
 pygame.init()
+pygame.mixer.init()  # 初始化音频 mixer
 
 screen_width, screen_height = 1440, 810
 screen = pygame.display.set_mode((screen_width, screen_height))
@@ -18,7 +19,34 @@ font = pygame.font.Font(None, 48)
 spark_particles = []
 # 新增：残影列表
 trail_particles = []
-    
+
+# ---------------------- 新增：音效加载 ----------------------
+# 音效路径配置
+sound_paths = {
+    'shoot': 'snd/biu.mp3',      # 发射白球（鼠标点击释放）
+    'score': 'snd/ding.MP3',     # 得分（白球碰撞彩球）
+    'levelup': 'snd/jiong.mp3',  # 升级（关卡升级、道具升级）
+    'collision': 'snd/peng.mp3', # 碰撞（球与球、球与边界）
+    'speedup': 'snd/shua.mp3'    # 加速（激活加速道具）
+}
+
+# 加载音效并处理文件不存在的情况
+sounds = {}
+for key, path in sound_paths.items():
+    try:
+        sounds[key] = pygame.mixer.Sound(path)
+        # 设置合适的音量（0.0-1.0）
+        if key == 'collision':
+            sounds[key].set_volume(0.3)  # 碰撞音效音量稍低
+        elif key == 'score':
+            sounds[key].set_volume(0.6)  # 得分音效适中
+        else:
+            sounds[key].set_volume(0.5)  # 其他音效默认音量
+    except FileNotFoundError:
+        sounds[key] = None
+        print(f"警告：音效文件 {path} 未找到，该音效将无法播放")
+
+# ---------------------- 原有代码保持不变 ----------------------
 # 加载图片时添加错误处理
 try:
     scaled_image = pygame.transform.scale(pygame.image.load('pic/whiteball.png'), (bsize, bsize))
@@ -58,7 +86,7 @@ video_rect = None  # 视频显示区域
 
 small_font = pygame.font.Font(None, 32) 
 total_score = 0
-current_level = 1
+current_level = 7
 ball_remain = 3
 progress_bar = {
     'x': 40,
@@ -580,6 +608,7 @@ def draw_progress():
 def check_ball_collisions(balls):
     """检测所有球体之间的碰撞并处理"""
     global total_score  
+    collision_played = False  # 避免同一帧多次播放碰撞音效
     for i in range(len(balls)):
         ball1 = balls[i]
         # 球体1的属性：位置、半径、速度
@@ -606,6 +635,11 @@ def check_ball_collisions(balls):
                 collision_x = (x1 + x2) // 2  # 碰撞中心点x坐标
                 collision_y = (y1 + y2) // 2  # 碰撞中心点y坐标
                 create_sparks(collision_x, collision_y, count=20)  # 创建20个火花粒子
+                
+                # 播放碰撞音效（每帧只播放一次，避免音效重叠）
+                if not collision_played and sounds['collision']:
+                    sounds['collision'].play()
+                    collision_played = True
                 
                 # 1. 防止球体重叠：将球体分开到刚好接触的位置
                 overlap = min_distance - distance
@@ -660,6 +694,10 @@ def check_ball_collisions(balls):
                     if ball1['type'] == 0 or ball2['type'] == 0:
                         score = ball1['type'] + ball2['type']
                         if score != 0:
+                            # 播放得分音效
+                            if sounds['score']:
+                                sounds['score'].play()
+                            
                             lv = ball1.get('level', 0) + ball2.get('level', 0)
                             total_score += score * lv
                             text_x = (x1 + x2) // 2
@@ -758,6 +796,10 @@ def init_level(level):
         'life': 120  # 显示2秒
     })
     
+    # 播放关卡开始音效（使用升级音效）
+    if sounds['levelup']:
+        sounds['levelup'].play()
+    
     # 检查是否解锁新道具，显示解锁提示
     if level == unlock_config['speedup']:
         unlock_text = "Unlock Speedup Item"
@@ -806,6 +848,10 @@ def check_level_up():
     current_config = level_configs[current_level - 1]
     if total_score >= current_config['target_score']:
         if current_level < 10:
+            # 播放关卡升级音效
+            if sounds['levelup']:
+                sounds['levelup'].play()
+            
             # 进入下一关
             current_level += 1
             init_level(current_level)
@@ -822,6 +868,9 @@ def check_level_up():
                 'alpha': 255,
                 'life': 300  # 显示5秒
             })
+            # 播放通关音效
+            if sounds['levelup']:
+                sounds['levelup'].play()
 
 def start_video():
     """启动视频播放"""
@@ -922,16 +971,20 @@ def reward_random_item():
     # 奖励道具
     if selected_item == 'whiteball':
         ball_remain += 1
-        reward_text = ""
+        reward_text = "获得白球+1"
         reward_color = (255, 255, 255)
     elif selected_item == 'speedup':
         speedup_remain += 1
-        reward_text = ""
+        reward_text = "获得加速道具+1"
         reward_color = (128, 0, 255)
     elif selected_item == 'levelup':
         levelup_remain += 1
-        reward_text = ""
+        reward_text = "获得升级道具+1"
         reward_color = (255, 215, 0)
+    
+    # 播放奖励音效（使用得分音效）
+    if sounds['score']:
+        sounds['score'].play()
     
     # 显示奖励提示
     text_surface = font.render(reward_text, True, reward_color)
@@ -1036,7 +1089,7 @@ while running:
                     start_video()
                 else:
                     # 未解锁时点击提示
-                    lock_text = ""
+                    lock_text = "第5关解锁"
                     text_surface = small_font.render(lock_text, True, (255, 0, 0))
                     shadow_surface = small_font.render(lock_text, True, (0, 0, 0))
                     float_texts.append({
@@ -1068,8 +1121,11 @@ while running:
                         speedup_remain -= 1
                         speedup_active = True
                         speedup_timer = 10 * 60
+                        # 播放加速激活音效
+                        if sounds['speedup']:
+                            sounds['speedup'].play()
                         # 显示加速激活提示
-                        activate_text = ""
+                        activate_text = "加速激活！"
                         text_surface = font.render(activate_text, True, (128, 0, 255))
                         shadow_surface = font.render(activate_text, True, (0, 0, 0))
                         float_texts.append({
@@ -1095,6 +1151,9 @@ while running:
                                 whiteballs.append(ball)
                         if whiteballs:
                             random.choice(whiteballs)['level'] += 1
+                            # 播放升级音效
+                            if sounds['levelup']:
+                                sounds['levelup'].play()
                             # 显示升级提示
                             upgrade_text = "Lv +1"
                             text_surface = font.render(upgrade_text, True, (255, 215, 0))
@@ -1139,6 +1198,9 @@ while running:
                 'type': 0,
                 'level': 1,
             })
+            # 播放发射白球音效
+            if sounds['shoot']:
+                sounds['shoot'].play()
             ghost_ball = None
 
     # 视频计时器更新
@@ -1153,7 +1215,7 @@ while running:
             speedup_active = False
             trail_particles = []  # 加速结束后清空残影
             # 显示加速结束提示
-            end_text = ""
+            end_text = "加速结束"
             text_surface = font.render(end_text, True, (128, 0, 255))
             shadow_surface = font.render(end_text, True, (0, 0, 0))
             float_texts.append({
@@ -1212,22 +1274,31 @@ while running:
             
             # 边界碰撞检测
             ball_radius = ball['rect'].width // 2
+            border_collision = False
             
             # 左右边界
             if ball['rect'].left <= gamearea['left']:
                 ball['rect'].left = gamearea['left']
                 ball['speed'][0] = -ball['speed'][0] * 1  # 添加一点阻尼
+                border_collision = True
             if ball['rect'].right >= gamearea['right']:
                 ball['rect'].right = gamearea['right']
                 ball['speed'][0] = -ball['speed'][0] * 1
+                border_collision = True
             
             # 上下边界
             if ball['rect'].top <= gamearea['top']:
                 ball['rect'].top = gamearea['top']
                 ball['speed'][1] = -ball['speed'][1] * 1
+                border_collision = True
             if ball['rect'].bottom >= gamearea['bottom']:
                 ball['rect'].bottom = gamearea['bottom']
                 ball['speed'][1] = -ball['speed'][1] * 1
+                border_collision = True
+            
+            # 播放边界碰撞音效（每帧只播放一次）
+            if border_collision and sounds['collision']:
+                sounds['collision'].play()
         
         # 检测并处理球体之间的碰撞
         if len(balls) >= 2:
@@ -1291,4 +1362,5 @@ while running:
 if video_capture:
     video_capture.release()
 cv2.destroyAllWindows()
+pygame.mixer.quit()  # 关闭音频 mixer
 pygame.quit()
